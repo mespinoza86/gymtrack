@@ -34,3 +34,16 @@ export async function profile(id) {
 }
 
 export const updateProfile = users.updateProfile;
+
+export async function changePassword(id, currentPassword, newPassword) {
+  const user = await users.findUserById(id);
+  if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+    throw new HttpError(401, 'La contraseña actual es incorrecta');
+  }
+  if (await bcrypt.compare(newPassword, user.password_hash)) {
+    throw new HttpError(400, 'La nueva contraseña debe ser diferente de la actual');
+  }
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  const updated = await users.updatePassword(id, passwordHash);
+  if (!updated) throw new HttpError(404, 'Usuario no encontrado');
+}

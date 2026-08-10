@@ -25,3 +25,8 @@ export async function updateProfile(req, res) {
   req.session.user = { ...req.session.user, firstName: user.first_name, lastName: user.last_name };
   res.json({ user });
 }
+
+export async function changePassword(req, res) {
+  await auth.changePassword(req.session.user.id, req.body.currentPassword, req.body.newPassword);
+  res.status(204).end();
+}

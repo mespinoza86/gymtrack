@@ -757,3 +757,137 @@ Flujo propuesto:
 8. Probar registro, inicio de sesión, sesiones, WebSockets y los recorridos principales después del despliegue.
 
 Antes de publicar datos reales sigue pendiente el endurecimiento de seguridad y calidad registrado anteriormente. También debe recordarse que el sistema de archivos normal de Render es efímero; las futuras fotografías y adjuntos necesitarán almacenamiento de objetos o almacenamiento persistente, no una carpeta local del servicio.
+
+## Inicio efectivo del despliegue
+
+El 8 de agosto de 2026 el usuario publicó el proyecto en GitHub. Se comprobó localmente lo siguiente:
+
+- El repositorio utiliza la rama `main`.
+- El remoto `origin` apunta a `https://github.com/mespinoza86/gymtrack.git`.
+- El primer commit existe con el identificador corto `80c9b32`.
+- `.env` no está rastreado ni fue incluido en el repositorio.
+- `.env.example` sí está rastreado, como plantilla sin secretos.
+
+El siguiente paso acordado es crear Render Postgres. Para reducir errores, primero se terminará la base administrada y después se creará el Web Service en la misma región.
+
+## Revisión del proveedor gratuito de base de datos
+
+El 8 de agosto de 2026 se detectó que Render Postgres gratuito vence 30 días después de su creación. La documentación vigente de Render indica que la base queda inaccesible al vencer, ofrece 14 días para actualizarla voluntariamente y después elimina los datos; el vencimiento no constituye por sí solo una autorización para comenzar a cobrar.
+
+Se evaluó cambiar a MongoDB Atlas. Atlas ofrece un clúster gratuito M0 sin fecha de vencimiento, con 512 MB de almacenamiento y límites propios; además, pausa los clústeres sin conexiones después de 30 días de inactividad. Sin embargo, el proyecto actual está construido específicamente sobre PostgreSQL: esquema relacional, migraciones SQL, consultas de todos los repositorios, transacciones, restricciones y sesiones mediante `connect-pg-simple`. Migrar a MongoDB obligaría a rediseñar el modelo y reescribir y volver a probar una parte sustancial del backend. No se recomienda asumir ese coste técnico únicamente por el proveedor de alojamiento.
+
+La alternativa recomendada para esta etapa es mantener PostgreSQL y utilizar el plan gratuito de Neon, que actualmente anuncia cero dólares, sin límite de tiempo ni tarjeta, 0.5 GB de almacenamiento y 100 CU-horas mensuales por proyecto, con suspensión automática del cómputo cuando queda inactivo. El Web Service puede permanecer en Render y conectarse a Neon mediante `DATABASE_URL` y `DATABASE_SSL=true`.
+
+Esta recomendación es apropiada para desarrollo, demostraciones y pruebas con pocos usuarios. Ningún plan gratuito debe tratarse como infraestructura definitiva para datos reales sensibles sin revisar respaldos, disponibilidad, límites, privacidad y costes de producción.
+
+## Continuación del 9 de agosto de 2026
+
+Al iniciar la sesión se revisó completamente este documento y el estado local del repositorio para recuperar el contexto sin repetir trabajo ya terminado. Se confirmó que la instalación local de PostgreSQL, las migraciones, los datos demo, el servidor y la comprobación `/api/health` ya habían quedado funcionando. También se confirmó que el proyecto ya está publicado en GitHub y que existe un cambio local pendiente en este mismo documento con las decisiones tomadas al cierre del 8 de agosto.
+
+El punto exacto de continuación es el despliegue gratuito: se mantiene PostgreSQL y, según la última decisión, se utilizará **Neon** para alojar la base de datos y **Render** para ejecutar el servicio web. Por tanto, el siguiente paso es crear el proyecto y la base PostgreSQL en Neon, obtener de forma privada su cadena de conexión y después aplicar allí las migraciones. No se publicarán contraseñas ni cadenas de conexión en esta bitácora, en GitHub ni en la conversación.
+
+Se renovó el acuerdo de documentación continua: toda decisión, cambio de archivos, comando importante, prueba, error, corrección y pendiente de esta sesión se agregará a `VISION_PRODUCTO.md` conforme avancemos. El trabajo de hoy no se considerará cerrado hasta dejar documentado el punto exacto de continuación.
+
+### Inicio de la creación de la base en Neon
+
+Se comenzó la guía paso a paso para crear una cuenta gratuita de Neon y alojar una nueva base PostgreSQL para el despliegue. Se verificó en la información oficial vigente de Neon que el plan Free cuesta $0, no requiere tarjeta y no tiene límite de tiempo. Neon crea automáticamente una base PostgreSQL al crear un proyecto.
+
+La primera etapa indicada al usuario es registrarse en la consola de Neon, preferiblemente mediante su cuenta de GitHub para simplificar el acceso al proyecto ya publicado. La configuración prevista para el proyecto es usar `gymtrack` como nombre del proyecto y de la base de datos, una versión estable de PostgreSQL ofrecida por Neon y una región que resulte adecuada para el futuro servicio de Render. Todavía no se ha confirmado que la cuenta o el proyecto hayan sido creados.
+
+Por seguridad, la contraseña y la cadena `DATABASE_URL` generadas por Neon no deben copiarse en esta bitácora, en el chat ni en GitHub. Se guardarán únicamente en los administradores de variables privadas correspondientes cuando llegue la etapa de conexión.
+
+El usuario completó la creación de su cuenta y llegó correctamente al formulario `Welcome to Neon` para crear el primer proyecto. Se acordó configurar `gymtrack` como nombre del proyecto, PostgreSQL 18 y la región `AWS US East 2 (Ohio)`. Esta región se eligió porque Render también permite desplegar el futuro Web Service en Ohio, reduciendo la distancia entre la aplicación y la base de datos. PostgreSQL 18 coincide además con la versión utilizada localmente.
+
+La opción **Neon Auth** se mantendrá desactivada, ya que GymTrack ya implementa autenticación, sesiones, roles y usuarios en su propio backend. Activar un segundo sistema de autenticación en esta etapa duplicaría responsabilidades y no forma parte del diseño actual. El proyecto de Neon todavía está pendiente de crearse y confirmarse.
+
+El usuario creó correctamente el proyecto `gymtrack` en Neon. Desde el panel se confirmó que pertenece al plan Free, utiliza la rama predeterminada `production`, tiene el cómputo primario activo y está alojado en `AWS US East 2 (Ohio)`. La captura revisada no mostró contraseñas ni cadenas de conexión. El siguiente paso es comprobar el nombre de la base PostgreSQL creada automáticamente y, si conserva el nombre predeterminado `neondb`, crear o seleccionar la base definitiva `gymtrack` antes de obtener credenciales y ejecutar migraciones.
+
+Se comprobó que Neon creó la base predeterminada `neondb` con el rol propietario `neondb_owner`. Se decidió conservarla intacta y crear una base adicional llamada `gymtrack`, usando `neondb_owner` como propietario. Esto permite que el nombre de la base desplegada coincida con el proyecto y evita realizar una eliminación innecesaria de la base predeterminada. La creación de `gymtrack` está pendiente de confirmación.
+
+El usuario confirmó que la base `gymtrack` ya aparece en Neon, por lo que su creación terminó correctamente. Se revisó la configuración del proyecto local: la aplicación lee `DATABASE_URL` y `DATABASE_SSL` desde el entorno, y `.env` está excluido por `.gitignore`. Como `.env` contiene actualmente la conexión a PostgreSQL local, no se reemplazará con la conexión de Neon. La cadena privada de Neon se utilizará temporalmente para las migraciones y posteriormente se almacenará directamente como variable secreta del Web Service en Render.
+
+Se abrió correctamente el diálogo de conexión de Neon y se verificaron la rama `production`, la base `gymtrack`, el rol `neondb_owner` y el cómputo primario activo. La opción `Connection pooling` aparece habilitada y se mantendrá así para la conexión del servicio alojado en Render. La captura compartida ocultó la contraseña y no expuso la cadena completa. No fue necesario copiar ni almacenar todavía la conexión; podrá recuperarse desde el botón `Connect` cuando se configuren las variables privadas de Render.
+
+## Continuación del 9 de agosto de 2026: nueva sesión
+
+Al comenzar esta sesión, el usuario pidió recuperar todo el contexto del proyecto y mantener este documento como bitácora viva de absolutamente todo lo trabajado durante el día. Se leyó nuevamente `VISION_PRODUCTO.md`, se revisó el estado de Git y se confirmó que el único cambio local pendiente corresponde a las anotaciones de despliegue agregadas a este mismo documento. No se modificó ni descartó ese trabajo previo.
+
+El punto exacto heredado de la sesión anterior es el siguiente:
+
+- El proyecto `gymtrack` ya existe en Neon, en el plan Free y en `AWS US East 2 (Ohio)`.
+- La rama de Neon es `production` y la base definitiva `gymtrack` ya fue creada.
+- El rol propietario es `neondb_owner` y la conexión agrupada mediante *pooling* quedó seleccionada.
+- La cadena privada de conexión todavía no se ha aplicado a las migraciones ni se ha guardado en Render.
+- La conexión local conservada en `.env` no debe reemplazarse, para poder seguir usando PostgreSQL local normalmente.
+
+Por tanto, lo siguiente es aplicar a Neon las migraciones SQL que ya funcionan localmente. Para hacerlo se obtendrá la cadena de conexión de la base `gymtrack` desde el diálogo `Connect` de Neon y se proporcionará al proceso de migración únicamente como variable temporal y secreta. La cadena no se copiará en este documento, no se incorporará a comandos que queden documentados con su valor, no se guardará en Git y no sustituirá el contenido de `.env`.
+
+Después de ejecutar `npm.cmd run db:migrate` contra Neon, se deberá confirmar el mensaje `Migraciones al día` y verificar desde Neon que existen las tablas y el registro de migraciones. Si esa comprobación termina correctamente, el paso posterior será crear en Render el Web Service de Node.js conectado al repositorio de GitHub, escoger también la región de Ohio y configurar allí las variables privadas de producción. Los datos demo no se cargarán en Neon salvo que el usuario decida expresamente que este primer despliegue será un entorno público de demostración.
+
+### Primer error de arranque en Render
+
+El usuario avanzó hasta crear y desplegar el Web Service en Render. La descarga del repositorio, la instalación de dependencias y la compilación finalizaron correctamente, pero el proceso `node src/server.js` se detuvo durante el arranque con el mensaje `SESSION_SECRET debe tener al menos 32 caracteres en producción`.
+
+Se inspeccionó `src/config/environment.js` y se confirmó que la aplicación exige correctamente la presencia de `DATABASE_URL` y `SESSION_SECRET`, y que en producción valida que el secreto de sesión tenga al menos 32 caracteres. Como Render superó la comprobación de existencia pero no la de longitud, el proceso sí recibió `SESSION_SECRET`, aunque con menos de 32 caracteres. El valor que el usuario había intentado configurar incluía varios signos de dólar; esos caracteres pueden introducir ambigüedad al importar o interpretar configuraciones con sintaxis de entorno. No es necesario relajar la validación ni modificar el código de seguridad.
+
+Además, el valor anterior quedó expuesto en la conversación y debe considerarse comprometido. Se decidió rotarlo inmediatamente y no volver a utilizarlo. La corrección acordada es generar un secreto aleatorio nuevo de 64 caracteres hexadecimales, sin espacios, comillas, signos de dólar ni el prefijo `SESSION_SECRET=`, introducir únicamente el valor en el campo correspondiente de Render y elegir `Save and deploy`. El secreto nuevo no debe compartirse en capturas, conversación, GitHub ni esta bitácora.
+
+Después del nuevo despliegue se comprobará si el servidor supera esta validación. Si aparece otro error, se analizará por separado; el mensaje del repositorio de GitHub y la versión de Node mostrados antes de este fallo no fueron la causa de esta interrupción concreta.
+
+El usuario confirmó que, después de reemplazar `SESSION_SECRET` por el nuevo valor seguro y volver a desplegar, Render arrancó correctamente. El error de longitud del secreto quedó resuelto. El valor nuevo no se compartió ni se registró en este documento.
+
+### Visibilidad y confirmación de contraseñas
+
+El usuario solicitó poder mostrar u ocultar la contraseña mediante un icono de ojo junto a todos los campos correspondientes. También pidió que el formulario de creación de cuenta tuviera dos campos, `Nueva contraseña` y `Confirmar contraseña`, ambos con su propio icono, y que se comprobara que sus valores coincidieran.
+
+Se implementaron los siguientes cambios:
+
+- Se creó `public/js/comun/password-toggle.js`, un componente reutilizable que detecta los campos de contraseña de la pantalla, agrega a cada uno un botón independiente y alterna entre contraseña oculta y texto visible.
+- El botón cambia entre los estados mostrar y ocultar, conserva el foco en el campo y expone etiquetas y estado mediante `aria-label`, `aria-pressed` y `title` para mejorar su accesibilidad.
+- `public/js/auth/login.js` inicializa el componente en el formulario de inicio de sesión.
+- `public/registro.html` ahora presenta los campos `Nueva contraseña` y `Confirmar contraseña`, con atributos `autocomplete` apropiados.
+- `public/js/auth/registro.js` comprueba en el navegador que ambos valores coincidan antes de llamar a la API. Si son diferentes, detiene el envío, muestra `Las contraseñas no coinciden.` y lleva el foco al campo de confirmación. El valor de confirmación se elimina de los datos antes de enviarlos al servidor.
+- `public/css/components.css` incorpora la distribución, los estados de interacción y los iconos SVG de los botones, sin depender de imágenes ni bibliotecas externas.
+
+Se confirmó que los únicos campos de contraseña existentes actualmente están en inicio de sesión y creación de cuenta, por lo que ambos recorridos quedaron cubiertos. Se ejecutó la comprobación sintáctica de los tres módulos JavaScript modificados o creados y todos fueron válidos. También se ejecutó `npm.cmd test`: el comando terminó correctamente, aunque el proyecto todavía informa 0 pruebas automatizadas, por lo que queda pendiente incorporar cobertura real para estos formularios.
+
+### Revisión de la función para cambiar la contraseña
+
+El usuario preguntó si la aplicación ya ofrecía el cambio de contraseña con los campos de contraseña actual, contraseña nueva y confirmación de la nueva contraseña. Se revisaron la pantalla y el JavaScript de `Mi perfil`, además de las rutas, controladores, servicios y repositorios actuales de autenticación.
+
+Se confirmó que esta función todavía no existe: el perfil solo permite actualizar nombre, apellidos, teléfono y fecha de nacimiento, y el backend no expone una ruta para cambiar la contraseña. La implementación correcta queda definida de esta manera:
+
+- Solicitar la contraseña actual y comprobarla contra el hash almacenado antes de aceptar el cambio.
+- Solicitar una contraseña nueva que cumpla las mismas reglas del registro.
+- Solicitar la confirmación de la contraseña nueva y exigir que ambas coincidan.
+- Incorporar el control común de mostrar u ocultar en los tres campos.
+- Impedir reutilizar la contraseña actual como contraseña nueva.
+- Generar un hash nuevo con `bcrypt` y no almacenar ni registrar ninguna contraseña en texto claro.
+- Confirmar el resultado al usuario y limpiar los tres campos después de completarlo.
+
+Este punto queda pendiente de implementación hasta que el usuario confirme que desea agregarlo como el siguiente cambio.
+
+El usuario confirmó inmediatamente que deseaba implementar la función. El pendiente anterior quedó resuelto mediante un cambio completo de interfaz, API y persistencia.
+
+#### Implementación del cambio de contraseña
+
+En `public/compartido/perfil.html` se agregó una tarjeta `Cambiar contraseña` dentro de `Mi perfil`, disponible para entrenadores y atletas autenticados. Contiene los campos `Contraseña actual`, `Nueva contraseña` y `Confirmar nueva contraseña`, con límites, requisitos y atributos de autocompletado apropiados. Los tres campos utilizan el componente común de mostrar u ocultar contraseña mediante un ojo independiente.
+
+`public/js/compartido/perfil.js` inicializa esos controles y administra el nuevo formulario. Antes de llamar al servidor comprueba que las contraseñas nuevas coincidan y que la nueva no sea idéntica a la actual. Después de un cambio correcto limpia todos los campos y muestra `Contraseña actualizada correctamente.`; los errores mantienen el formulario disponible para su corrección.
+
+Se incorporó la ruta autenticada `PUT /api/auth/password`. La validación del servidor exige la contraseña actual y aplica a la contraseña nueva las mismas reglas del registro: entre 8 y 72 caracteres, al menos una mayúscula y un número. El controlador utiliza exclusivamente el identificador de la sesión, por lo que un usuario no puede indicar la cuenta de otra persona.
+
+En el servicio de autenticación se implementó el siguiente flujo seguro:
+
+1. Obtener al usuario activo por su identificador de sesión.
+2. Comparar la contraseña actual con el hash almacenado mediante `bcrypt`.
+3. Rechazar el cambio si la contraseña actual es incorrecta.
+4. Comparar la nueva contraseña con el hash existente y rechazar su reutilización.
+5. Generar un hash nuevo con un coste de 12 rondas.
+6. Actualizar únicamente `password_hash`; la contraseña en texto claro nunca se almacena ni se registra.
+
+Los archivos de backend modificados fueron `src/routes/auth.routes.js`, `src/controllers/auth.controller.js`, `src/services/auth.service.js` y `src/repositories/auth.repository.js`. No fue necesaria una migración porque la tabla `users` ya contiene `password_hash` y su marca `updated_at` se actualiza mediante el trigger existente.
+
+Se creó `test/change-password.test.js`, la primera prueba automatizada del proyecto. La prueba utiliza PostgreSQL local y un usuario temporal aislado para comprobar cuatro comportamientos: rechazo de una contraseña actual incorrecta, rechazo de reutilizar la contraseña vigente, cambio correcto, rechazo posterior de la contraseña antigua y acceso exitoso con la nueva. Su limpieza verifica el identificador y el correo del usuario temporal antes de eliminarlo y exige que se elimine exactamente una fila, sin modificar las cuentas demo.
+
+Se ejecutaron comprobaciones sintácticas sobre todos los módulos de backend modificados y sobre el JavaScript del perfil; todas terminaron correctamente. También se importó la aplicación completa sin errores. Finalmente, `npm.cmd test` informó 1 prueba aprobada, 0 fallidas y confirmó la limpieza correcta del usuario temporal.
