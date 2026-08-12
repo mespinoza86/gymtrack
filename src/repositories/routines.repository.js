@@ -2,7 +2,13 @@ import { pool, withTransaction } from '../config/database.js';
 
 export async function listExercises(userId) {
   return (await pool.query(`SELECT id, name, muscle_group, instructions, media_url
-    FROM exercises WHERE is_public = TRUE OR created_by = $1 ORDER BY name`, [userId])).rows;
+    FROM exercises WHERE is_active = TRUE AND (is_public = TRUE OR created_by = $1) ORDER BY name`, [userId])).rows;
+}
+
+export async function exerciseLibrary(userId) {
+  return (await pool.query(`SELECT e.id,e.name,e.muscle_group,e.instructions,e.media_url,e.is_public,e.is_active,
+      EXISTS(SELECT 1 FROM routine_exercises re WHERE re.exercise_id=e.id) AS is_used
+    FROM exercises e WHERE e.is_public=TRUE OR e.created_by=$1 ORDER BY e.is_public DESC,e.name`, [userId])).rows;
 }
 
 export async function createExercise(userId, input) {
@@ -11,29 +17,61 @@ export async function createExercise(userId, input) {
 }
 
 export async function createRoutine(trainerId, input) {
+  return withTransaction((client) => insertRoutine(client, trainerId, input));
+}
+
+export async function updateExercise(id, userId, input) {
+  return (await pool.query(`UPDATE exercises SET name=$3,muscle_group=$4,instructions=$5,media_url=$6
+    WHERE id=$1 AND created_by=$2 AND is_public=FALSE RETURNING *`,
+  [id,userId,input.name,input.muscleGroup || null,input.instructions || null,input.mediaUrl || null])).rows[0] || null;
+}
+
+export async function setExerciseStatus(id, userId, isActive) {
+  return (await pool.query(`UPDATE exercises SET is_active=$3 WHERE id=$1 AND created_by=$2 AND is_public=FALSE RETURNING *`,
+    [id,userId,isActive])).rows[0] || null;
+}
+
+export async function deleteExercise(id, userId) {
   return withTransaction(async (client) => {
-    const routine = (await client.query(`INSERT INTO routines (trainer_id, athlete_id, name, description, status, start_date, end_date)
-      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [trainerId, input.athleteId || null, input.name, input.description || null, input.status, input.startDate || null, input.endDate || null])).rows[0];
-    for (let dayIndex = 0; dayIndex < input.days.length; dayIndex += 1) {
-      const dayInput = input.days[dayIndex];
-      const day = (await client.query(`INSERT INTO routine_days (routine_id,name,day_order,notes) VALUES ($1,$2,$3,$4) RETURNING id`,
-        [routine.id, dayInput.name, dayIndex + 1, dayInput.notes || null])).rows[0];
-      for (let exerciseIndex = 0; exerciseIndex < dayInput.exercises.length; exerciseIndex += 1) {
-        const item = dayInput.exercises[exerciseIndex];
-        await client.query(`INSERT INTO routine_exercises
-          (routine_day_id,exercise_id,exercise_order,sets,reps,target_weight,rest_seconds,rir,tempo,notes)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [day.id, item.exerciseId, exerciseIndex + 1, item.sets, item.reps, item.targetWeight ?? null,
-          item.restSeconds ?? null, item.rir ?? null, item.tempo || null, item.notes || null]);
-      }
+    const exercise=(await client.query('SELECT id FROM exercises WHERE id=$1 AND created_by=$2 AND is_public=FALSE FOR UPDATE',[id,userId])).rows[0];
+    if(!exercise) return 'missing';
+    if((await client.query('SELECT 1 FROM routine_exercises WHERE exercise_id=$1 LIMIT 1',[id])).rowCount) return 'used';
+    await client.query('DELETE FROM exercises WHERE id=$1',[id]);
+    return 'deleted';
+  });
+}
+
+async function insertRoutine(client, trainerId, input) {
+  const routine = (await client.query(`INSERT INTO routines (trainer_id, athlete_id, name, description, status, start_date, end_date)
+    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+  [trainerId, input.athleteId || null, input.name, input.description || null, input.status, input.startDate || null, input.endDate || null])).rows[0];
+  for (let dayIndex = 0; dayIndex < input.days.length; dayIndex += 1) {
+    const dayInput = input.days[dayIndex];
+    const day = (await client.query(`INSERT INTO routine_days (routine_id,name,day_order,notes) VALUES ($1,$2,$3,$4) RETURNING id`,
+      [routine.id, dayInput.name, dayIndex + 1, dayInput.notes || null])).rows[0];
+    for (let exerciseIndex = 0; exerciseIndex < dayInput.exercises.length; exerciseIndex += 1) {
+      const item = dayInput.exercises[exerciseIndex];
+      await client.query(`INSERT INTO routine_exercises
+        (routine_day_id,exercise_id,exercise_order,sets,reps,target_weight,rest_seconds,rir,tempo,notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [day.id, item.exerciseId, exerciseIndex + 1, item.sets, item.reps, item.targetWeight ?? null,
+        item.restSeconds ?? null, item.rir ?? null, item.tempo || null, item.notes || null]);
     }
-    return routine;
+  }
+  return routine;
+}
+
+export async function replaceRoutine(id, trainerId, input) {
+  return withTransaction(async (client) => {
+    const previous = (await client.query('SELECT id FROM routines WHERE id=$1 AND trainer_id=$2 FOR UPDATE', [id, trainerId])).rows[0];
+    if (!previous) return null;
+    await client.query("UPDATE routines SET status='archived' WHERE id=$1", [id]);
+    return insertRoutine(client, trainerId, input);
   });
 }
 
 export async function listRoutines(user) {
-  const condition = user.role === 'trainer' ? 'r.trainer_id = $1' : "r.athlete_id = $1 AND r.status = 'active'";
+  const condition = user.role === 'trainer' ? "r.trainer_id = $1 AND r.status <> 'archived'" : "r.athlete_id = $1 AND r.status = 'active'";
   return (await pool.query(`SELECT r.*, u.first_name AS athlete_first_name, u.last_name AS athlete_last_name
     FROM routines r LEFT JOIN users u ON u.id = r.athlete_id WHERE ${condition} ORDER BY r.updated_at DESC`, [user.id])).rows;
 }
@@ -44,6 +82,7 @@ export async function getRoutine(id, user) {
   if (!routine) return null;
   routine.days = (await pool.query(`SELECT d.id, d.name, d.day_order, d.notes,
       COALESCE(json_agg(json_build_object('id',re.id,'exerciseId',e.id,'name',e.name,'muscleGroup',e.muscle_group,
+        'instructions',e.instructions,'mediaUrl',e.media_url,
         'sets',re.sets,'reps',re.reps,'targetWeight',re.target_weight,'restSeconds',re.rest_seconds,'rir',re.rir,
         'tempo',re.tempo,'notes',re.notes) ORDER BY re.exercise_order) FILTER (WHERE re.id IS NOT NULL), '[]') AS exercises
     FROM routine_days d LEFT JOIN routine_exercises re ON re.routine_day_id=d.id LEFT JOIN exercises e ON e.id=re.exercise_id

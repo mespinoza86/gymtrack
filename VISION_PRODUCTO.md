@@ -1,7 +1,7 @@
 # Visión del producto: plataforma para entrenadores y atletas
 
 > Documento vivo para conservar el contexto, las ideas y las decisiones del proyecto.
-> Última actualización: 7 de agosto de 2026.
+> Última actualización: 11 de agosto de 2026.
 
 ## Estado actual
 
@@ -891,3 +891,69 @@ Los archivos de backend modificados fueron `src/routes/auth.routes.js`, `src/con
 Se creó `test/change-password.test.js`, la primera prueba automatizada del proyecto. La prueba utiliza PostgreSQL local y un usuario temporal aislado para comprobar cuatro comportamientos: rechazo de una contraseña actual incorrecta, rechazo de reutilizar la contraseña vigente, cambio correcto, rechazo posterior de la contraseña antigua y acceso exitoso con la nueva. Su limpieza verifica el identificador y el correo del usuario temporal antes de eliminarlo y exige que se elimine exactamente una fila, sin modificar las cuentas demo.
 
 Se ejecutaron comprobaciones sintácticas sobre todos los módulos de backend modificados y sobre el JavaScript del perfil; todas terminaron correctamente. También se importó la aplicación completa sin errores. Finalmente, `npm.cmd test` informó 1 prueba aprobada, 0 fallidas y confirmó la limpieza correcta del usuario temporal.
+
+## Continuación del 11 de agosto de 2026
+
+Al iniciar la sesión, el usuario pidió volver a leer la visión completa, recuperar el punto exacto del proyecto y mantener en este documento una bitácora de todo cambio material realizado durante el día. El archivo solicitado como `VISION_PROYECTO.md` no existe en el repositorio; se confirmó que el documento vivo correcto es `VISION_PRODUCTO.md`, por lo que se continuará actualizando este archivo sin crear un duplicado con otro nombre.
+
+Se revisaron el documento completo, la estructura actual del proyecto, el historial reciente de Git y el estado del árbol de trabajo. La rama activa es `main`, coincide con `origin/main`, el árbol estaba limpio al comenzar y el último commit es `8cd7a95` (`Arreglando contrasenas`). Ese commit contiene la visibilidad y confirmación de contraseñas, la función autenticada para cambiar la contraseña y su prueba automatizada.
+
+El punto exacto donde quedó el trabajo es el siguiente:
+
+- La primera versión modular del MVP ya existe, con frontend multipágina, API de Node.js/Express, PostgreSQL, migraciones, datos demo, sesiones, roles, vinculaciones, rutinas, nutrición, progreso, check-ins y mensajería.
+- PostgreSQL local, las migraciones, los datos demo y el arranque local ya se habían comprobado.
+- El proyecto está publicado en GitHub y el servicio de Render llegó a arrancar correctamente conectado al entorno de producción después de rotar y corregir `SESSION_SECRET`.
+- Neon contiene el proyecto y la base `gymtrack`; el documento previo no dejó una confirmación explícita de que las migraciones de producción y todos los recorridos principales se verificaran desde el sitio público.
+- El último desarrollo terminado fue el cambio seguro de contraseña desde `Mi perfil`. No hay cambios de código pendientes en el árbol local al comienzo de esta sesión.
+
+Como verificación de hoy se ejecutó nuevamente `npm.cmd test` contra PostgreSQL local. El resultado fue 1 prueba aprobada, 0 fallidas; se confirmó otra vez el flujo de cambio de contraseña y la limpieza del usuario temporal. Durante la ejecución apareció una advertencia de compatibilidad futura de `pg`/`pg-connection-string` sobre los modos SSL. No rompe la versión actual, pero conviene revisar la configuración y hacer explícito `sslmode=verify-full` antes de actualizar a `pg` 9.
+
+### Recomendación para continuar
+
+La prioridad recomendada es cerrar primero la validación del despliegue público antes de agregar más funciones. Se debe confirmar en Render y Neon, sin compartir secretos, que `/api/health` responde correctamente y realizar una prueba de humo del recorrido completo: registro, inicio y cierre de sesión, invitación entrenador-atleta, asignación y consulta de rutina, registro de progreso o check-in, mensajería y cambio de contraseña. Esto descubrirá diferencias de cookies, CORS/origen, WebSockets, permisos o esquema entre el entorno local y producción.
+
+Después de esa validación, el siguiente bloque recomendado es ampliar las pruebas automatizadas. Actualmente solo existe una prueba, enfocada en cambio de contraseña. El orden de mayor valor es autenticación y autorización por roles, vinculaciones e invitaciones, acceso aislado a datos de atletas, rutinas y mensajería. Antes de utilizar información real también siguen siendo necesarios almacenamiento privado externo para archivos y fotografías, respaldos, recuperación de contraseña, revisión de privacidad y endurecimiento general de seguridad.
+
+El punto de continuación inmediato queda, por tanto, en verificar el despliegue público de extremo a extremo y registrar aquí los resultados, errores y correcciones. Durante el resto del 11 de agosto de 2026, cada decisión, archivo modificado, prueba ejecutada, error relevante y pendiente nuevo se añadirá a esta sección, sin registrar contraseñas, tokens ni cadenas de conexión.
+
+### Consulta y modificación de rutinas por el entrenador
+
+El usuario señaló que, después de crear una rutina como entrenador, el plan quedaba cerrado: la lista solo mostraba un resumen y no ofrecía mecanismos para consultar sus ejercicios ni aplicar cambios. Se confirmó que la API ya tenía una consulta individual protegida, pero la interfaz del entrenador no la utilizaba y el backend no disponía de una operación de actualización.
+
+La pantalla `Rutinas` ahora incorpora las acciones `Ver rutina` y `Modificar` en cada plan. La primera despliega el detalle de los días, ejercicios, series, repeticiones y descansos sin abandonar la lista. La segunda abre el mismo formulario utilizado para crear rutinas, cargando previamente el nombre, atleta, descripción, fecha inicial, nombre del día y ejercicios existentes. Desde allí se pueden cambiar esos datos, agregar ejercicios, quitar ejercicios y modificar series, repeticiones o descansos.
+
+Se agregó la ruta autenticada y exclusiva para entrenadores `PUT /api/routines/:id`. El servidor valida nuevamente todo el contenido, comprueba que el atleta siga vinculado al entrenador y verifica que la rutina pertenezca al entrenador autenticado. No es posible modificar una rutina ajena indicando manualmente otro identificador.
+
+Para conservar la integridad de entrenamientos históricos, una modificación no elimina ni reescribe los días y ejercicios que pudieran estar referenciados por registros anteriores. Dentro de una sola transacción, la versión previa se marca como archivada y se crea una versión nueva con los cambios. Las versiones archivadas dejan de aparecer en la lista normal del entrenador y del atleta, mientras sus referencias históricas permanecen disponibles en la base de datos. No fue necesaria una migración nueva porque el esquema existente ya admite el estado `archived`.
+
+Se comprobaron sintácticamente todos los módulos modificados, se importó la aplicación completa y se ejecutó `npm.cmd test`, con 1 prueba aprobada y 0 fallidas. Además, se realizó una prueba de integración temporal contra PostgreSQL local: se creó una rutina, se modificó, se comprobó que la anterior quedara archivada, que la nueva conservara el contenido actualizado y que otro usuario no pudiera reemplazarla. Todos los registros temporales se eliminaron al finalizar. Queda pendiente que el usuario confirme visualmente el recorrido en el navegador y, después de publicar los cambios, repetirlo en Render.
+
+### Biblioteca de ejercicios del entrenador
+
+El usuario solicitó una sección donde cada entrenador pueda crear sus propios ejercicios, incluir un enlace a un video demostrativo y utilizarlos posteriormente desde el selector de creación o modificación de rutinas. También definió que un ejercicio personalizado puede eliminarse si nunca ha formado parte de una rutina, pero si ya fue utilizado debe conservarse y permitir únicamente su desactivación.
+
+Se creó la nueva pantalla `Ejercicios`, accesible desde la navegación del entrenador. La biblioteca separa los ejercicios personalizados del entrenador y los ejercicios generales disponibles para toda la plataforma. El formulario permite registrar nombre, grupo muscular, instrucciones y una URL pública opcional para el video. Los ejercicios personalizados se pueden editar, activar o desactivar. La interfaz muestra si están activos y si ya se encuentran en uso; cuando existe una referencia en alguna rutina, no presenta la acción de eliminación.
+
+La seguridad y las reglas no dependen únicamente de la interfaz. La API permite listar la biblioteca, crear ejercicios, editar exclusivamente los ejercicios propios, cambiar su estado y solicitar su eliminación. Los ejercicios generales no pueden ser modificados desde una cuenta de entrenador, y un entrenador tampoco puede administrar los ejercicios privados de otro. Al eliminar, el servidor comprueba dentro de una transacción si existe alguna referencia en `routine_exercises`: si nunca se usó, se elimina definitivamente; si fue usado, responde que solo puede desactivarse. Esto protege también rutinas archivadas e historiales anteriores.
+
+La consulta utilizada por los combobox de creación y edición de rutinas ahora devuelve únicamente ejercicios activos: incluye los generales activos y los personalizados activos del entrenador autenticado. Un ejercicio desactivado deja de ofrecerse para rutinas nuevas, pero continúa existiendo y siendo legible dentro de las rutinas históricas que ya lo contienen.
+
+Se agregó y aplicó localmente la migración `003_exercise_status.sql`, que incorpora `is_active` con valor inicial verdadero e indexa los ejercicios personalizados por propietario y estado. Antes de desplegar esta versión, la misma migración deberá ejecutarse contra Neon; el código nuevo no debe publicarse en Render sin aplicar primero esta actualización de esquema.
+
+Se comprobaron sintácticamente los módulos modificados, la aplicación completa se importó correctamente y `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas. También se ejecutó una verificación de integración temporal contra PostgreSQL local que confirmó: aparición de un ejercicio propio activo en el selector, bloqueo de edición por otro usuario, eliminación definitiva cuando no tiene referencias, rechazo de eliminación cuando ya forma parte de una rutina, desactivación correcta y permanencia del ejercicio usado dentro de la biblioteca. La rutina y los ejercicios temporales se eliminaron al terminar. Queda pendiente la revisión visual del usuario en el navegador y posteriormente aplicar la migración en Neon, publicar el código y repetir el recorrido en Render.
+
+### Instrucciones y videos durante el entrenamiento
+
+El usuario observó que almacenar instrucciones y un enlace de video no aporta valor si el atleta solo puede ver el nombre del ejercicio. Se acordó presentar la ayuda tanto al consultar una rutina antes de comenzar como durante el registro de cada ejercicio, sin obligar al atleta a abandonar la pantalla ni perder los valores escritos.
+
+La vista de rutinas del atleta ahora muestra, junto a cada ejercicio, series, objetivo de repeticiones y descanso. Cuando existen instrucciones aparece `Ver instrucciones`, que despliega y vuelve a plegar el texto dentro de la misma tarjeta. Cuando existe un enlace aparece `Ver video`. Durante la ejecución se agrupan las series bajo cada ejercicio y se repiten esos mismos controles de ayuda por ejercicio, evitando repetir la descripción y el botón en cada serie individual.
+
+Se agregó un modal adaptable para los videos. Los enlaces estándar de YouTube, YouTube abreviado y Vimeo se transforman en reproductores integrados; la política de seguridad del servidor autoriza marcos únicamente desde YouTube y Vimeo. Para cualquier otro proveedor se presenta un mensaje y un enlace seguro para abrir el recurso en otra pestaña. Al cerrar el modal mediante el botón, el fondo o la tecla Escape, el reproductor se elimina para detener el video y el formulario del entrenamiento permanece intacto.
+
+Los nombres, instrucciones y enlaces se escapan antes de incorporarlos a la interfaz para impedir que contenido introducido por un entrenador se interprete como HTML. Los enlaces externos utilizan `noopener noreferrer`. Se comprobaron la sintaxis del módulo del atleta y del servidor, la aplicación se importó correctamente, `git diff --check` no encontró errores y `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas. Queda pendiente la confirmación visual en un navegador con ejercicios que tengan instrucciones, un video de YouTube o Vimeo y un enlace de otro proveedor.
+
+#### Corrección de datos de ayuda en el detalle de la rutina
+
+Durante la comprobación visual, el usuario informó que el ejercicio personalizado `Lagartijas` aparecía ante el atleta como si no tuviera instrucciones ni video. Se consultó PostgreSQL local y se confirmó que el ejercicio sí conserva la instrucción y el enlace de YouTube introducidos por el entrenador, y que ya forma parte de una rutina. El problema estaba en la consulta del detalle: el objeto JSON de cada ejercicio incluía planificación y nombre, pero omitía `instructions` y `mediaUrl`.
+
+Se corrigió `getRoutine` en el repositorio de rutinas para incluir ambos campos desde la tabla `exercises`. No fue necesario volver a crear ni modificar el ejercicio, ni aplicar una migración adicional. Se verificó directamente con la rutina que contiene `Lagartijas` que la respuesta ahora entrega exactamente su instrucción y su URL de video. También se comprobó la sintaxis, se importó la aplicación completa, `git diff --check` no encontró errores y `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas.
