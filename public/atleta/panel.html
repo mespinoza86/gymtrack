@@ -1,1 +1,50 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Panel atleta</title><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/layout.css"><link rel="stylesheet" href="/css/components.css"></head><body><div class="app-shell"><aside class="sidebar" data-sidebar></aside><main class="page"><header class="page-header"><div><h1>Tu panel</h1><p class="muted">Hoy también cuenta.</p></div><a class="btn" href="/atleta/rutinas.html">Ver entrenamiento</a></header><div id="link-card"></div><section class="grid three" id="stats"></section><section class="card" style="margin-top:18px"><h2>Rutinas activas</h2><div id="routines" class="list"></div></section></main></div><script type="module" src="/js/atleta/panel.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Tu panel</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Tu panel</h1>
+          <p class="muted">Hoy también cuenta.</p>
+        </div>
+        <div class="top-actions">
+          <a class="btn" href="/atleta/rutinas.html">Ver entrenamiento</a>
+        </div>
+      </header>
+
+      <div id="link-card"></div>
+
+      <section class="grid three" id="stats">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </section>
+
+      <section class="card mt">
+        <h2>Rutinas activas</h2>
+        <div id="routines" class="list">
+          <div class="skeleton skeleton-row"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/js/atleta/panel.js"></script>
+</body>
+
+</html>

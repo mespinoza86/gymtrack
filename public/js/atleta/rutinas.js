@@ -1,5 +1,6 @@
 import { initNavigation } from '../comun/navigation.js';
 import { api, showMessage } from '../comun/api.js';
+import { escapeHtml } from '../comun/dom.js';
 
 await initNavigation();
 const list = document.querySelector('#routines');
@@ -7,8 +8,6 @@ const detail = document.querySelector('#detail');
 const message = document.querySelector('#message');
 const modal = document.querySelector('#video-modal');
 const videoContent = document.querySelector('#video-content');
-
-const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
 
 function videoEmbedUrl(rawUrl) {
   try {

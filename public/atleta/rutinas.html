@@ -1,1 +1,48 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mis rutinas</title><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/layout.css"><link rel="stylesheet" href="/css/components.css"></head><body><div class="app-shell"><aside class="sidebar" data-sidebar></aside><main class="page"><header><h1>Mis rutinas</h1><p class="muted">Consulta el plan y registra cada serie realizada.</p></header><div id="message" hidden></div><div id="routines" class="grid two"></div><section id="detail" style="margin-top:20px"></section></main></div><dialog id="video-modal" class="video-modal"><div class="video-modal-header"><h2 id="video-title">Video del ejercicio</h2><button type="button" class="btn secondary small" id="close-video" aria-label="Cerrar video">Cerrar</button></div><div id="video-content"></div></dialog><script type="module" src="/js/atleta/rutinas.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mis rutinas</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Mis rutinas</h1>
+          <p class="muted">Consulta el plan y registra cada serie realizada.</p>
+        </div>
+      </header>
+
+      <div id="message" hidden></div>
+
+      <div id="routines" class="grid two">
+        <div class="skeleton skeleton-card"></div>
+      </div>
+
+      <section id="detail" class="mt"></section>
+    </main>
+  </div>
+
+  <dialog id="video-modal" class="video-modal">
+    <div class="video-modal-header">
+      <h2 id="video-title">Video del ejercicio</h2>
+      <button type="button" class="btn secondary small" id="close-video" aria-label="Cerrar video">Cerrar</button>
+    </div>
+    <div id="video-content"></div>
+  </dialog>
+
+  <script type="module" src="/js/atleta/rutinas.js"></script>
+</body>
+
+</html>

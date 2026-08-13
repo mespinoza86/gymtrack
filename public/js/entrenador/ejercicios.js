@@ -1,5 +1,6 @@
 import { initNavigation } from '../comun/navigation.js';
 import { api, formData, showMessage } from '../comun/api.js';
+import { escapeHtml } from '../comun/dom.js';
 
 await initNavigation();
 const form = document.querySelector('#exercise-form');
@@ -8,7 +9,7 @@ const cancel = document.querySelector('#cancel');
 let exercises = [];
 
 function exerciseCard(exercise, editable) {
-  return `<article class="card"><div><span class="badge">${exercise.is_active ? 'Activo' : 'Desactivado'}</span>${exercise.is_used ? ' <span class="badge">En uso</span>' : ''}</div><h3>${exercise.name}</h3><p><strong>${exercise.muscle_group || 'Grupo muscular no indicado'}</strong></p><p>${exercise.instructions || 'Sin instrucciones.'}</p>${exercise.media_url ? `<p><a href="${exercise.media_url}" target="_blank" rel="noopener noreferrer">Ver video de demostración</a></p>` : ''}${editable ? `<div class="actions"><button class="btn secondary small" data-edit="${exercise.id}">Editar</button><button class="btn secondary small" data-status="${exercise.id}" data-active="${exercise.is_active}">${exercise.is_active ? 'Desactivar' : 'Activar'}</button>${exercise.is_used ? '' : `<button class="btn danger small" data-delete="${exercise.id}">Eliminar</button>`}</div>` : ''}</article>`;
+  return `<article class="card"><div><span class="badge">${exercise.is_active ? 'Activo' : 'Desactivado'}</span>${exercise.is_used ? ' <span class="badge">En uso</span>' : ''}</div><h3>${escapeHtml(exercise.name)}</h3><p><strong>${escapeHtml(exercise.muscle_group || 'Grupo muscular no indicado')}</strong></p><p>${escapeHtml(exercise.instructions || 'Sin instrucciones.')}</p>${exercise.media_url ? `<p><a href="${escapeHtml(exercise.media_url)}" target="_blank" rel="noopener noreferrer">Ver video de demostración</a></p>` : ''}${editable ? `<div class="actions"><button class="btn secondary small" data-edit="${exercise.id}">Editar</button><button class="btn secondary small" data-status="${exercise.id}" data-active="${exercise.is_active}">${exercise.is_active ? 'Desactivar' : 'Activar'}</button>${exercise.is_used ? '' : `<button class="btn danger small" data-delete="${exercise.id}">Eliminar</button>`}</div>` : ''}</article>`;
 }
 
 async function load() {

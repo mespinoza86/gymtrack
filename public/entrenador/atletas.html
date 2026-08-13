@@ -1,1 +1,49 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mis atletas</title><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/layout.css"><link rel="stylesheet" href="/css/components.css"></head><body><div class="app-shell"><aside class="sidebar" data-sidebar></aside><main class="page"><header class="page-header"><div><h1>Mis atletas</h1><p class="muted">Personas vinculadas actualmente.</p></div><a class="btn" href="invitaciones.html">Nueva invitación</a></header><div class="card table-wrap"><table><thead><tr><th>Atleta</th><th>Correo</th><th>Último peso</th><th>Última medición</th></tr></thead><tbody id="athletes"></tbody></table></div></main></div><script type="module" src="/js/entrenador/atletas.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mis atletas</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Mis atletas</h1>
+          <p class="muted">Personas vinculadas actualmente.</p>
+        </div>
+        <div class="top-actions">
+          <a class="btn" href="invitaciones.html">Nueva invitación</a>
+        </div>
+      </header>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Atleta</th>
+              <th>Correo</th>
+              <th>Último peso</th>
+              <th>Última medición</th>
+            </tr>
+          </thead>
+          <tbody id="athletes"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/js/entrenador/atletas.js"></script>
+</body>
+
+</html>

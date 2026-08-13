@@ -1,5 +1,6 @@
 import { initNavigation } from '../comun/navigation.js';
 import { api, formData, showMessage } from '../comun/api.js';
+import { escapeHtml } from '../comun/dom.js';
 
 await initNavigation();
 const routineId = new URLSearchParams(location.search).get('id');
@@ -7,13 +8,13 @@ const form = document.querySelector('#routine');
 const rows = document.querySelector('#exercise-rows');
 const message = document.querySelector('#message');
 const [{ people }, { exercises }] = await Promise.all([api('/api/links/people'), api('/api/routines/exercises')]);
-document.querySelector('#athlete').innerHTML = '<option value="">Seleccionar</option>' + people.map((person) => `<option value="${person.id}">${person.first_name} ${person.last_name}</option>`).join('');
+document.querySelector('#athlete').innerHTML = '<option value="">Seleccionar</option>' + people.map((person) => `<option value="${person.id}">${escapeHtml(person.first_name)} ${escapeHtml(person.last_name)}</option>`).join('');
 
 function addRow(values = {}) {
   const node = document.querySelector('#row-template').content.cloneNode(true);
   const row = node.querySelector('.exercise-row');
   const select = row.querySelector('select');
-  select.innerHTML = exercises.map((exercise) => `<option value="${exercise.id}">${exercise.name}${exercise.muscle_group ? ` · ${exercise.muscle_group}` : ''}</option>`).join('');
+  select.innerHTML = exercises.map((exercise) => `<option value="${exercise.id}">${escapeHtml(exercise.name)}${exercise.muscle_group ? ` · ${escapeHtml(exercise.muscle_group)}` : ''}</option>`).join('');
   for (const input of row.querySelectorAll('[data-name]')) if (values[input.dataset.name] !== undefined && values[input.dataset.name] !== null) input.value = values[input.dataset.name];
   row.querySelector('.remove').onclick = () => row.remove();
   rows.append(node);

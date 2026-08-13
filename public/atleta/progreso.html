@@ -1,1 +1,93 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mi progreso</title><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/layout.css"><link rel="stylesheet" href="/css/components.css"></head><body><div class="app-shell"><aside class="sidebar" data-sidebar></aside><main class="page"><header><h1>Mi progreso</h1><p class="muted">Registra medidas en condiciones similares para comparar mejor.</p></header><div id="message" hidden></div><div class="grid two"><form id="measurement" class="card"><h2>Nueva medición</h2><div class="field"><label>Fecha</label><input name="measuredAt" type="date" required></div><div class="form-row"><div class="field"><label>Peso (kg)</label><input name="weightKg" type="number" min="1" step=".1"></div><div class="field"><label>Grasa corporal (%)</label><input name="bodyFatPercent" type="number" min="0" max="100" step=".1"></div></div><div class="form-row"><div class="field"><label>Cintura (cm)</label><input name="waistCm" type="number" step=".1"></div><div class="field"><label>Cadera (cm)</label><input name="hipCm" type="number" step=".1"></div></div><div class="form-row"><div class="field"><label>Pecho (cm)</label><input name="chestCm" type="number" step=".1"></div><div class="field"><label>Brazo (cm)</label><input name="armCm" type="number" step=".1"></div></div><div class="field"><label>Notas</label><textarea name="notes"></textarea></div><button class="btn">Guardar medición</button></form><section><h2>Historial</h2><div id="measurements" class="list"></div></section></div></main></div><script type="module" src="/js/atleta/progreso.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mi progreso</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Mi progreso</h1>
+          <p class="muted">Registra tus medidas en condiciones similares para poder compararlas.</p>
+        </div>
+      </header>
+
+      <div id="message" hidden></div>
+
+      <section class="grid two">
+        <div class="card" id="chart-weight">
+          <div class="skeleton skeleton-card"></div>
+        </div>
+        <div class="card" id="chart-waist">
+          <div class="skeleton skeleton-card"></div>
+        </div>
+      </section>
+
+      <div class="grid two mt">
+        <form id="measurement" class="card">
+          <h2>Nueva medición</h2>
+          <div class="field">
+            <label for="measuredAt">Fecha</label>
+            <input id="measuredAt" name="measuredAt" type="date" required>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="weightKg">Peso (kg)</label>
+              <input id="weightKg" name="weightKg" type="number" min="1" step=".1">
+            </div>
+            <div class="field">
+              <label for="bodyFatPercent">Grasa corporal (%)</label>
+              <input id="bodyFatPercent" name="bodyFatPercent" type="number" min="0" max="100" step=".1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="waistCm">Cintura (cm)</label>
+              <input id="waistCm" name="waistCm" type="number" step=".1">
+            </div>
+            <div class="field">
+              <label for="hipCm">Cadera (cm)</label>
+              <input id="hipCm" name="hipCm" type="number" step=".1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="chestCm">Pecho (cm)</label>
+              <input id="chestCm" name="chestCm" type="number" step=".1">
+            </div>
+            <div class="field">
+              <label for="armCm">Brazo (cm)</label>
+              <input id="armCm" name="armCm" type="number" step=".1">
+            </div>
+          </div>
+          <div class="field">
+            <label for="notes">Notas</label>
+            <textarea id="notes" name="notes"></textarea>
+          </div>
+          <button class="btn">Guardar medición</button>
+        </form>
+
+        <section>
+          <h2>Historial</h2>
+          <div id="measurements" class="list"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/js/atleta/progreso.js"></script>
+</body>
+
+</html>

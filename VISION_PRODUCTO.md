@@ -957,3 +957,82 @@ Los nombres, instrucciones y enlaces se escapan antes de incorporarlos a la inte
 Durante la comprobación visual, el usuario informó que el ejercicio personalizado `Lagartijas` aparecía ante el atleta como si no tuviera instrucciones ni video. Se consultó PostgreSQL local y se confirmó que el ejercicio sí conserva la instrucción y el enlace de YouTube introducidos por el entrenador, y que ya forma parte de una rutina. El problema estaba en la consulta del detalle: el objeto JSON de cada ejercicio incluía planificación y nombre, pero omitía `instructions` y `mediaUrl`.
 
 Se corrigió `getRoutine` en el repositorio de rutinas para incluir ambos campos desde la tabla `exercises`. No fue necesario volver a crear ni modificar el ejercicio, ni aplicar una migración adicional. Se verificó directamente con la rutina que contiene `Lagartijas` que la respuesta ahora entrega exactamente su instrucción y su URL de video. También se comprobó la sintaxis, se importó la aplicación completa, `git diff --check` no encontró errores y `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas.
+
+## Continuación del 12 de agosto de 2026
+
+Al iniciar la sesión el usuario pidió revisar toda la documentación existente y analizar todo lo hecho hasta ahora. Se leyeron `README.md` y `VISION_PRODUCTO.md` completos y se contrastaron contra `git log` y `git status`; el árbol estaba limpio y el commit `a692d5a` ("cambios a la app") ya incluía tanto el código de edición de rutinas/biblioteca de ejercicios como la propia actualización de esta bitácora, por lo que no había trabajo sin documentar.
+
+A continuación el usuario pidió una revisión completa del código y una opinión sobre su calidad. Se leyeron íntegramente: `src/app.js`, `src/server.js`, configuración de entorno y base de datos, middlewares de autenticación/errores/validación, los cinco módulos backend completos (auth, links, routines, tracking, messages) en sus cuatro capas, el socket de chat, el esquema SQL de `001_initial_schema.sql`, `package.json`, la prueba automatizada existente y una muestra amplia de los 20 módulos de JavaScript del navegador.
+
+### Hallazgos de la revisión
+
+**Fortalezas confirmadas:** arquitectura en capas consistente en los cinco módulos sin mezclar SQL con HTTP; SQL parametrizado en el 100% de las consultas revisadas (sin riesgo de inyección); validación con Zod en cada endpoint mutante; esquema PostgreSQL con `CHECK`, `UNIQUE` compuestas e índices parciales bien pensados; bcrypt costo 12; sesiones persistidas en PostgreSQL con cookies `httpOnly`/`sameSite=lax`/`secure` en producción; Helmet con CSP explícita; autorización correcta por vínculo activo o pertenencia en los módulos `links`, `tracking` y `messages`, incluido el socket de chat.
+
+**Hallazgo crítico — XSS almacenado sistémico:** casi todos los módulos del navegador insertaban datos provenientes del servidor directamente en `innerHTML` sin escapar. Como el backend no restringe caracteres en campos como el nombre del usuario (`firstName`/`lastName` solo validan longitud), un registro malicioso podía ejecutar JavaScript arbitrario en el navegador de cualquier otro usuario que viera ese nombre, un mensaje de chat, un check-in, un plan nutricional o una rutina. La única excepción ya corregida antes de hoy era `public/js/atleta/rutinas.js`, que definía su propia función `escapeHtml` local para instrucciones y video de ejercicios, pero ese patrón nunca se compartió con el resto de las pantallas.
+
+**Hallazgo menor — falta de verificación de pertenencia en entrenamientos:** en `src/repositories/routines.repository.js`, `startWorkout` y `finishWorkout` no comprueban que el `routineDayId` ni los `routineExerciseId` enviados por el atleta pertenezcan realmente a una rutina que le fue asignada. Impacto bajo (los UUID no son adivinables y solo afecta datos propios del atleta), pero es una comprobación de autorización que el resto del código sí aplica siempre. **Queda pendiente de corrección**, no se tocó en esta sesión.
+
+Puntos menores adicionales, también pendientes: solo existe 1 prueba automatizada en todo el proyecto; no hay token CSRF explícito (se apoya únicamente en `sameSite=lax`); la dependencia `multer` está declarada en `package.json` pero no se usa en ningún archivo de `src` todavía.
+
+### Corrección aplicada: XSS almacenado
+
+Se creó `public/js/comun/dom.js`, que exporta una única función `escapeHtml` reutilizable (antes duplicada de forma local). Se aplicó en los 15 módulos del navegador que interpolaban datos de servidor en `innerHTML` sin escapar:
+
+`public/js/comun/navigation.js` (nombre del usuario en el menú lateral, presente en toda página autenticada), `public/js/compartido/mensajes.js` (cuerpo del chat, nombre del interlocutor, vista previa del último mensaje), `public/js/compartido/perfil.js` (lista de vínculos), `public/js/entrenador/atletas.js`, `public/js/entrenador/panel.js`, `public/js/entrenador/checkins.js` (logros, dificultades, molestias y retroalimentación de check-ins), `public/js/entrenador/nutricion.js`, `public/js/entrenador/rutinas.js`, `public/js/entrenador/rutina-formulario.js`, `public/js/entrenador/ejercicios.js`, `public/js/atleta/panel.js`, `public/js/atleta/historial.js`, `public/js/atleta/nutricion.js`, `public/js/atleta/checkin.js`. También se refactorizó `public/js/atleta/rutinas.js` para importar la utilidad compartida en lugar de mantener su copia local.
+
+Se revisaron los archivos restantes que también usan `innerHTML` (`public/js/atleta/progreso.js`, `public/js/entrenador/invitaciones.js`, `public/js/entrenador/ejercicios.js` en sus dos llamadas restantes) y no requerían cambios: solo interpolan números o valores generados por el servidor (código de invitación aleatorio, estado tipo enum), nunca texto libre escrito por un usuario.
+
+**Verificación:** los 16 archivos modificados o creados pasaron `node --check` sin errores; `git diff --check` no reportó errores de formato; `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas contra PostgreSQL local, sin regresiones. No fue necesaria ninguna migración ni cambio de backend para esta corrección. Queda pendiente la confirmación visual en el navegador (registrar un usuario con un nombre que contenga `<` o `>` y verificar que se muestre como texto literal en el sidebar, el chat y la lista de atletas) y, después, publicar el cambio en Render.
+
+### Acuerdo renovado de bitácora continua
+
+El usuario reafirmó que quiere que absolutamente todo lo que se trabaje —incluyendo lo que se le proponga y lo que se decida— quede registrado en este documento a medida que ocurre, para poder retomar el proyecto sin pérdida de contexto si se cierra la sesión. Esta sección se mantendrá actualizada durante el resto del 12 de agosto de 2026 conforme avance el trabajo.
+
+### Punto de continuación
+
+1. Revisar visualmente el rediseño en el navegador: computadora, tablet y celular; menú deslizante y barra inferior; cambio entre tema claro y oscuro; gráficas de progreso con mediciones reales.
+2. Confirmar visualmente que el escape de HTML funciona (nombre con caracteres especiales, mensaje de chat con `<script>` de prueba) antes de publicar.
+3. Aplicar la migración `003_exercise_status.sql` en Neon, que sigue pendiente desde el 11 de agosto y bloquea publicar en Render el código de biblioteca de ejercicios.
+4. Publicar en Render la corrección del XSS junto con el rediseño y repetir ambas confirmaciones en producción.
+5. Decidir si se corrige ahora o se deja pendiente la falta de verificación de pertenencia en `startWorkout`/`finishWorkout` (hallazgo menor, ver arriba).
+6. Seguir con la prioridad ya documentada el 11 de agosto: prueba de humo completa del despliegue público y ampliación de pruebas automatizadas.
+
+### Rediseño de la interfaz gráfica
+
+El usuario solicitó rediseñar por completo la interfaz para que resulte atractiva y moderna, y para que se adapte correctamente a computadora, tablet y celular. Pidió explícitamente entender el alcance antes de que se modificara nada.
+
+**Diagnóstico de la interfaz anterior.** Se revisaron las 18 páginas HTML y los tres archivos CSS. La base tenía una paleta y tipografías correctas (verde `#145c3d`, Manrope y DM Sans), pero se encontraron estos problemas:
+
+- Existía un único punto de quiebre responsivo (`800px`), sin ningún diseño intermedio para tablet.
+- En celular el menú lateral se convertía en un bloque de nueve enlaces sobre el contenido, obligando a desplazarse por todo el menú antes de ver la página. Era el peor problema de usabilidad, justo en el dispositivo donde el atleta usa la aplicación.
+- Los tres archivos CSS estaban minificados en cinco líneas en total, lo que hacía inviable mantenerlos o evolucionarlos.
+- No había iconos, estados de carga, modo oscuro ni transiciones.
+- Las gráficas de progreso, presentes en el MVP desde el principio, nunca se implementaron: `progreso.js` solo mostraba una lista de texto.
+- Se detectó además que la política de seguridad de contenido definida en `src/app.js` no incluye `'unsafe-inline'` en `styleSrc`, por lo que los atributos `style=` escritos directamente en `public/entrenador/panel.html` y `public/atleta/rutinas.html` estaban siendo bloqueados por el navegador y nunca se aplicaron. Se corrigen moviéndolos a clases de CSS.
+
+**Decisiones tomadas por el usuario.** Se le presentaron cuatro decisiones y eligió:
+
+1. **Dirección visual:** oscuro atlético premium, con fondo profundo y acentos de verde neón, conservando el lima `#a8ef6a` de la identidad original.
+2. **Temas:** soporte para modo claro y oscuro, siguiendo automáticamente la preferencia del sistema y con un botón para cambiarlo manualmente.
+3. **Navegación en celular:** combinación de barra inferior fija con los accesos más frecuentes y menú lateral deslizante con el resto de las secciones.
+4. **Alcance:** rediseño visual completo más la implementación de las gráficas de progreso pendientes.
+
+**Restricciones respetadas.** Se mantiene el HTML multipágina con JavaScript modular sin framework, según la preferencia ya registrada del usuario. No se usan librerías externas por CDN porque la CSP solo autoriza scripts propios; todo el CSS es propio y las gráficas se construyen como SVG escrito a mano. Tampoco se modifica la API ni la lógica de negocio: el trabajo es de capa visual. Como la CSP también bloquea scripts en línea, el tema se aplica mediante un script propio cargado antes del pintado para evitar el parpadeo de fondo claro al abrir cada página.
+
+#### Implementación del rediseño
+
+**Sistema de diseño.** Los tres archivos CSS se reescribieron por completo, ahora legibles y comentados en lugar de minificados. `base.css` define el conjunto de tokens de color, tipografía, espaciado, elevación y movimiento. El tema claro se declara en `:root` y el oscuro se aplica por dos vías independientes: `@media (prefers-color-scheme: dark)` para seguir al sistema, y `:root[data-theme='dark']` para la elección manual, que siempre gana. Cada componente lee sus colores de esos tokens, por lo que ninguna pieza necesita reglas duplicadas por tema. Se añadieron bloques de carga animados y se respeta `prefers-reduced-motion`.
+
+**Estructura responsiva.** `layout.css` define tres comportamientos según el ancho disponible. Desde 1024 px se muestra el menú lateral fijo de siempre. Por debajo de ese ancho el mismo elemento lateral se convierte en un menú deslizante que entra desde la izquierda con fondo oscurecido, y aparecen una barra superior con el botón de menú y una barra inferior fija con los cuatro accesos más usados de cada rol más un botón `Más` que abre el menú completo. La barra inferior respeta `env(safe-area-inset-bottom)` para no quedar bajo la barra de gestos de los teléfonos modernos. Las rejillas usan `auto-fit` con anchos mínimos, de modo que se reorganizan solas sin depender de puntos de quiebre adicionales.
+
+**Módulos nuevos.** Se crearon cinco archivos en `public/js/comun/`: `icons.js` con un juego de veinte iconos SVG propios que heredan el color del texto; `theme-init.js`, script clásico que se carga en `<head>` y aplica el tema guardado antes del primer pintado; `theme.js`, que construye los botones de cambio de tema y mantiene sincronizados todos los que existan en pantalla; `charts.js`, el generador de gráficas; y `dom.js`, creado antes en esta misma sesión para el escape de HTML.
+
+**Gráficas de progreso.** Quedó implementada la funcionalidad que faltaba desde el MVP. `charts.js` dibuja gráficas de línea en SVG con área degradada, rejilla, ejes, puntos con detalle emergente y encabezado con el valor más reciente y su variación. En lugar de escalar un `viewBox`, mide el ancho real del contenedor y redibuja al cambiar el tamaño de la ventana, para que las etiquetas conserven un tamaño legible tanto en monitor como en celular. La pantalla de progreso del atleta muestra ahora la evolución del peso y de la cintura junto al historial. Se decidió expresamente que la variación se muestre en un tono neutro con una flecha de dirección, y no en verde o rojo, porque subir o bajar de peso no es bueno ni malo en sí mismo y la aplicación no conoce el objetivo de cada persona.
+
+**Páginas.** Las 18 páginas HTML se reescribieron en formato legible, con etiquetas `label` asociadas a sus campos mediante `for`/`id`, textos de ayuda, y bloques de carga en las secciones que esperan datos. Se eliminaron todos los atributos `style=` que la CSP bloqueaba, sustituidos por clases (`.mt`, `.grid.messages`, `.chat-form`). Las pantallas de acceso recibieron un tratamiento propio con panel lateral degradado, lista de ventajas y botón de cambio de tema disponible antes de iniciar sesión.
+
+**Verificaciones ejecutadas.** Todos los módulos JavaScript de `public/js` pasaron `node --check`. Se comprobó automáticamente que no queda ningún `style=` en el HTML, que las 18 páginas cargan `theme-init.js`, que todas las rutas de CSS y JavaScript referenciadas existen en disco, y que cada identificador consultado por el JavaScript de cada página existe en su HTML correspondiente. Se levantó el servidor y se confirmó `{"status":"ok"}` en `/api/health` junto con respuesta 200 en las páginas y recursos nuevos. Se verificó en la cabecera real que la CSP entrega `script-src 'self'` y `style-src 'self' https://fonts.googleapis.com`, coherente con el diagnóstico. El generador de gráficas se probó con una comprobación temporal sobre cinco casos: serie normal, un solo punto, valores idénticos, sin datos y con valores nulos; los cinco produjeron salida correcta sin `NaN` ni `undefined`, y el archivo temporal se eliminó al terminar. Finalmente `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas, y `git diff --check` no encontró errores de formato.
+
+**Archivos afectados.** Se modificaron los tres archivos CSS, las 18 páginas HTML y 17 módulos JavaScript; se crearon `public/js/comun/icons.js`, `theme-init.js`, `theme.js` y `charts.js`. No se tocó ningún archivo de `src`, ni la base de datos, ni las migraciones.
+
+**Pendiente de este trabajo.** Falta la confirmación visual del usuario en un navegador real: revisar las pantallas en computadora, tablet y celular, comprobar el menú deslizante y la barra inferior, alternar entre tema claro y oscuro, y verificar las gráficas con mediciones reales. Después de esa revisión el cambio puede publicarse en Render, teniendo en cuenta que la migración `003_exercise_status.sql` sigue pendiente en Neon y bloquea el despliegue del código de biblioteca de ejercicios.

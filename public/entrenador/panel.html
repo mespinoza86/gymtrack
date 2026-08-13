@@ -1,1 +1,49 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Panel entrenador</title><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/layout.css"><link rel="stylesheet" href="/css/components.css"></head><body><div class="app-shell"><aside class="sidebar" data-sidebar></aside><main class="page"><header class="page-header"><div><h1>Panel del entrenador</h1><p class="muted">Vista general de tus atletas y seguimiento.</p></div><a class="btn" href="/entrenador/invitaciones.html">Invitar atleta</a></header><section class="grid three" id="stats"></section><section class="card" style="margin-top:18px"><h2>Atletas</h2><div id="people" class="list"></div></section></main></div><script type="module" src="/js/entrenador/panel.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Panel del entrenador</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Panel del entrenador</h1>
+          <p class="muted">Vista general de tus atletas y su seguimiento.</p>
+        </div>
+        <div class="top-actions">
+          <a class="btn" href="/entrenador/invitaciones.html">Invitar atleta</a>
+        </div>
+      </header>
+
+      <section class="grid three" id="stats">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </section>
+
+      <section class="card mt">
+        <h2>Atletas</h2>
+        <div id="people" class="list">
+          <div class="skeleton skeleton-row"></div>
+          <div class="skeleton skeleton-row"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/js/entrenador/panel.js"></script>
+</body>
+
+</html>
