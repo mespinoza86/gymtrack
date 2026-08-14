@@ -7,7 +7,7 @@ export const pool = new Pool({
   connectionString: env.databaseUrl,
   ssl: env.databaseSsl ? { rejectUnauthorized: false } : false,
   max: 10,
-  idleTimeoutMillis: 30_000
+  idleTimeoutMillis: 30_000,
 });
 
 pool.on('error', (error) => console.error('Error inesperado de PostgreSQL:', error));

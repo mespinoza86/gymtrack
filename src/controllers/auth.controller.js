@@ -13,7 +13,7 @@ export async function login(req, res) {
 }
 
 export function logout(req, res, next) {
-  req.session.destroy((error) => error ? next(error) : res.status(204).end());
+  req.session.destroy((error) => (error ? next(error) : res.status(204).end()));
 }
 
 export async function me(req, res) {

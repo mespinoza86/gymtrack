@@ -1,18 +1,17 @@
 import { icon } from './icons.js';
 
 const KEY = 'gymtrack-theme';
-const system = matchMedia('(prefers-color-scheme: dark)');
 
 /* Puede haber más de un botón en pantalla, por ejemplo el de la barra
    superior y el del menú lateral. Se guardan todos para que al cambiar
    el tema ninguno quede mostrando el icono contrario. */
 const buttons = new Set();
 
-/* El tema efectivo es el elegido a mano si existe; si no, el del sistema. */
+/* El tema efectivo es el elegido a mano si existe; si no, oscuro, que
+   es el tema base de la aplicación. La preferencia del sistema no
+   interviene: el oscuro es siempre el punto de partida. */
 function currentTheme() {
-  const chosen = document.documentElement.dataset.theme;
-  if (chosen === 'dark' || chosen === 'light') return chosen;
-  return system.matches ? 'dark' : 'light';
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 }
 
 function describe(button, theme) {
@@ -29,14 +28,13 @@ function refreshAll() {
 
 function apply(theme) {
   document.documentElement.dataset.theme = theme;
-  try { localStorage.setItem(KEY, theme); } catch (error) { /* almacenamiento no disponible */ }
+  try {
+    localStorage.setItem(KEY, theme);
+  } catch (error) {
+    /* almacenamiento no disponible */
+  }
   refreshAll();
 }
-
-/* Mientras el usuario no elija manualmente, se sigue al sistema. */
-system.addEventListener('change', () => {
-  if (!document.documentElement.dataset.theme) refreshAll();
-});
 
 export function themeButton() {
   const button = document.createElement('button');

@@ -1,0 +1,13 @@
+# El formateo automático se aplica solo al JavaScript del proyecto.
+# El CSS y el HTML ya se escribieron a mano durante el rediseño, con una
+# distribución pensada para leerse; reformatearlos no aportaría nada y
+# ensuciaría el historial.
+
+node_modules/
+storage/
+public/css/
+public/assets/
+*.html
+*.md
+*.sql
+*.json

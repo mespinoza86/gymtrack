@@ -1,1 +1,16 @@
-import{api}from'./api.js';export async function currentUser(required=true){try{return(await api('/api/auth/me')).user;}catch(error){if(required)location.href='/index.html';return null;}}export async function logout(){await api('/api/auth/logout',{method:'POST'});location.href='/index.html';}export function homeFor(role){return role==='trainer'?'/entrenador/panel.html':'/atleta/panel.html';}
+import { api } from './api.js';
+export async function currentUser(required = true) {
+  try {
+    return (await api('/api/auth/me')).user;
+  } catch (error) {
+    if (required) location.href = '/index.html';
+    return null;
+  }
+}
+export async function logout() {
+  await api('/api/auth/logout', { method: 'POST' });
+  location.href = '/index.html';
+}
+export function homeFor(role) {
+  return role === 'trainer' ? '/entrenador/panel.html' : '/atleta/panel.html';
+}

@@ -19,5 +19,6 @@ export async function acceptInvitation(code, athleteId) {
 }
 
 export async function assertLink(trainerId, athleteId) {
-  if (!(await links.activeLink(trainerId, athleteId))) throw new HttpError(403, 'No existe una vinculación activa con este atleta');
+  if (!(await links.activeLink(trainerId, athleteId)))
+    throw new HttpError(403, 'No existe una vinculación activa con este atleta');
 }

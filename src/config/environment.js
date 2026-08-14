@@ -16,5 +16,5 @@ export const env = Object.freeze({
   databaseSsl: process.env.DATABASE_SSL === 'true',
   sessionSecret: process.env.SESSION_SECRET,
   appOrigin: process.env.APP_ORIGIN ?? 'http://localhost:3000',
-  maxUploadMb: Number(process.env.MAX_UPLOAD_MB ?? 5)
+  maxUploadMb: Number(process.env.MAX_UPLOAD_MB ?? 5),
 });

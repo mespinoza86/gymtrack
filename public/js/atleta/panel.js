@@ -8,7 +8,7 @@ await initNavigation();
 const [{ people }, { routines }, { measurements }] = await Promise.all([
   api('/api/links/people'),
   api('/api/routines'),
-  api('/api/tracking/measurements')
+  api('/api/tracking/measurements'),
 ]);
 
 document.querySelector('#link-card').innerHTML = people.length
@@ -23,12 +23,16 @@ const latestWeight = measurements[0]?.weight_kg;
 document.querySelector('#stats').innerHTML = [
   stat('Rutinas activas', routines.length, 'rutinas'),
   stat('Último peso', latestWeight ? `${escapeHtml(latestWeight)} kg` : '—', 'progreso'),
-  stat('Entrenadores', people.length, 'atletas')
+  stat('Entrenadores', people.length, 'atletas'),
 ].join('');
 
 document.querySelector('#routines').innerHTML = routines.length
-  ? routines.map((routine) => `<div class="list-item">
+  ? routines
+      .map(
+        (routine) => `<div class="list-item">
       <strong>${escapeHtml(routine.name)}</strong>
       ${routine.description ? `<p>${escapeHtml(routine.description)}</p>` : ''}
-    </div>`).join('')
+    </div>`,
+      )
+      .join('')
   : '<div class="empty">No tienes una rutina activa.</div>';

@@ -24,7 +24,8 @@ function shorten(value) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-const shortDate = (value) => new Date(value).toLocaleDateString('es', { day: 'numeric', month: 'short' });
+const shortDate = (value) =>
+  new Date(value).toLocaleDateString('es', { day: 'numeric', month: 'short' });
 
 function buildSvg(points, width, height, unit) {
   const innerWidth = Math.max(width - MARGIN.left - MARGIN.right, 10);
@@ -32,34 +33,56 @@ function buildSvg(points, width, height, unit) {
   const values = points.map((point) => point.y);
   const { lo, hi } = scale(Math.min(...values), Math.max(...values));
 
-  const x = (index) => MARGIN.left + (points.length === 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
+  const x = (index) =>
+    MARGIN.left +
+    (points.length === 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
   const y = (value) => MARGIN.top + innerHeight - ((value - lo) / (hi - lo)) * innerHeight;
 
-  const id = `chart-fade-${sequence += 1}`;
+  const id = `chart-fade-${(sequence += 1)}`;
 
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-    const value = lo + (hi - lo) * (1 - ratio);
-    const position = MARGIN.top + innerHeight * ratio;
-    return `<line class="chart-grid" x1="${MARGIN.left}" y1="${position}" x2="${MARGIN.left + innerWidth}" y2="${position}"/>
+  const ticks = [0, 0.25, 0.5, 0.75, 1]
+    .map((ratio) => {
+      const value = lo + (hi - lo) * (1 - ratio);
+      const position = MARGIN.top + innerHeight * ratio;
+      return `<line class="chart-grid" x1="${MARGIN.left}" y1="${position}" x2="${MARGIN.left + innerWidth}" y2="${position}"/>
       <text class="chart-axis" x="${MARGIN.left - 8}" y="${position + 4}" text-anchor="end">${shorten(value)}</text>`;
-  }).join('');
+    })
+    .join('');
 
-  const line = points.map((point, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.y).toFixed(1)}`).join(' ');
+  const line = points
+    .map((point, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.y).toFixed(1)}`)
+    .join(' ');
   const base = MARGIN.top + innerHeight;
   const area = `${line} L${x(points.length - 1).toFixed(1)},${base} L${x(0).toFixed(1)},${base} Z`;
 
-  const dots = points.map((point, index) => {
-    const last = index === points.length - 1;
-    /* Con muchos registros solo se marcan los extremos para no saturar. */
-    if (!last && points.length > 14 && index !== 0) return '';
-    return `<circle class="${last ? 'chart-dot-last' : 'chart-dot'}" cx="${x(index).toFixed(1)}" cy="${y(point.y).toFixed(1)}" r="${last ? 5 : 4}"><title>${escapeHtml(`${shortDate(point.x)}: ${shorten(point.y)}${unit ? ` ${unit}` : ''}`)}</title></circle>`;
-  }).join('');
+  const dots = points
+    .map((point, index) => {
+      const last = index === points.length - 1;
+      /* Con muchos registros solo se marcan los extremos para no saturar. */
+      if (!last && points.length > 14 && index !== 0) return '';
+
+      /* El <title> es el detalle que el navegador muestra al posar
+         el puntero encima del punto. */
+      const detalle = escapeHtml(
+        `${shortDate(point.x)}: ${shorten(point.y)}${unit ? ` ${unit}` : ''}`,
+      );
+
+      return `
+        <circle
+          class="${last ? 'chart-dot-last' : 'chart-dot'}"
+          cx="${x(index).toFixed(1)}"
+          cy="${y(point.y).toFixed(1)}"
+          r="${last ? 5 : 4}"
+        ><title>${detalle}</title></circle>`;
+    })
+    .join('');
 
   const first = shortDate(points[0].x);
   const last = shortDate(points[points.length - 1].x);
-  const labels = points.length === 1
-    ? `<text class="chart-axis" x="${x(0)}" y="${height - 8}" text-anchor="middle">${escapeHtml(first)}</text>`
-    : `<text class="chart-axis" x="${MARGIN.left}" y="${height - 8}">${escapeHtml(first)}</text>
+  const labels =
+    points.length === 1
+      ? `<text class="chart-axis" x="${x(0)}" y="${height - 8}" text-anchor="middle">${escapeHtml(first)}</text>`
+      : `<text class="chart-axis" x="${MARGIN.left}" y="${height - 8}">${escapeHtml(first)}</text>
        <text class="chart-axis" x="${MARGIN.left + innerWidth}" y="${height - 8}" text-anchor="end">${escapeHtml(last)}</text>`;
 
   return `<svg class="chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">
@@ -77,7 +100,11 @@ function buildSvg(points, width, height, unit) {
 /* Dibuja la gráfica dentro del contenedor y la vuelve a dibujar si
    la ventana cambia de tamaño, para que siga ajustada al girar el
    teléfono o al redimensionar la ventana. */
-export function renderChart(container, points, { height = 240, unit = '', empty = 'Sin datos suficientes para graficar.' } = {}) {
+export function renderChart(
+  container,
+  points,
+  { height = 240, unit = '', empty = 'Sin datos suficientes para graficar.' } = {},
+) {
   const usable = points
     .filter((point) => point.y !== null && point.y !== undefined && !Number.isNaN(Number(point.y)))
     .map((point) => ({ x: point.x, y: Number(point.y) }))
@@ -104,7 +131,9 @@ export function renderChart(container, points, { height = 240, unit = '', empty 
 /* Encabezado con el valor más reciente y su variación respecto al
    primer registro del periodo mostrado. */
 export function chartHeader(title, points, unit = '') {
-  const usable = points.filter((point) => point.y !== null && point.y !== undefined && !Number.isNaN(Number(point.y)));
+  const usable = points.filter(
+    (point) => point.y !== null && point.y !== undefined && !Number.isNaN(Number(point.y)),
+  );
   if (!usable.length) return `<div class="chart-head"><h3>${escapeHtml(title)}</h3></div>`;
 
   const latest = Number(usable[usable.length - 1].y);
@@ -114,9 +143,10 @@ export function chartHeader(title, points, unit = '') {
   /* Solo se indica la dirección del cambio, sin sugerir si es
      favorable: eso depende del objetivo de cada persona. */
   const arrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '';
-  const delta = usable.length > 1
-    ? `<span class="chart-delta ${direction}">${direction === 'flat' ? 'Sin cambio' : `${arrow} ${shorten(Math.abs(change))} ${escapeHtml(unit)}`}</span>`
-    : '';
+  const delta =
+    usable.length > 1
+      ? `<span class="chart-delta ${direction}">${direction === 'flat' ? 'Sin cambio' : `${arrow} ${shorten(Math.abs(change))} ${escapeHtml(unit)}`}</span>`
+      : '';
 
   return `<div class="chart-head">
     <div><h3>${escapeHtml(title)}</h3><span class="chart-value tabular">${shorten(latest)} ${escapeHtml(unit)}</span></div>

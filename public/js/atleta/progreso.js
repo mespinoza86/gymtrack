@@ -27,22 +27,26 @@ function drawChart(container, title, points, unit) {
   renderChart(container.querySelector('.chart-holder'), points, {
     unit,
     height: 210,
-    empty: 'Registra al menos una medición para ver la evolución.'
+    empty: 'Registra al menos una medición para ver la evolución.',
   });
 }
 
 function historyItem(item) {
   const detail = [
     item.weight_kg ? `${item.weight_kg} kg` : '',
-    item.body_fat_percent ? `${item.body_fat_percent}% grasa` : ''
-  ].filter(Boolean).join(' · ');
+    item.body_fat_percent ? `${item.body_fat_percent}% grasa` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const sizes = [
     item.waist_cm ? `Cintura ${item.waist_cm}` : '',
     item.hip_cm ? `Cadera ${item.hip_cm}` : '',
     item.chest_cm ? `Pecho ${item.chest_cm}` : '',
-    item.arm_cm ? `Brazo ${item.arm_cm}` : ''
-  ].filter(Boolean).join(' · ');
+    item.arm_cm ? `Brazo ${item.arm_cm}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return `<div class="list-item">
     <strong>${escapeHtml(formatDate(item.measured_at))}</strong>
@@ -54,8 +58,18 @@ function historyItem(item) {
 async function load() {
   const { measurements } = await api('/api/tracking/measurements');
 
-  drawChart(document.querySelector('#chart-weight'), 'Peso corporal', series(measurements, 'weight_kg'), 'kg');
-  drawChart(document.querySelector('#chart-waist'), 'Cintura', series(measurements, 'waist_cm'), 'cm');
+  drawChart(
+    document.querySelector('#chart-weight'),
+    'Peso corporal',
+    series(measurements, 'weight_kg'),
+    'kg',
+  );
+  drawChart(
+    document.querySelector('#chart-waist'),
+    'Cintura',
+    series(measurements, 'waist_cm'),
+    'cm',
+  );
 
   history.innerHTML = measurements.length
     ? measurements.map(historyItem).join('')

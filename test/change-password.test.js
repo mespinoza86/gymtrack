@@ -13,24 +13,27 @@ test('cambia la contraseña solo con la contraseña actual correcta', async (t) 
     passwordHash,
     firstName: 'Prueba',
     lastName: 'Temporal',
-    role: 'athlete'
+    role: 'athlete',
   });
 
   t.after(async () => {
     const found = (await pool.query('SELECT email FROM users WHERE id = $1', [user.id])).rows[0];
     assert.equal(found?.email, email);
-    const deleted = await pool.query('DELETE FROM users WHERE id = $1 AND email = $2', [user.id, email]);
+    const deleted = await pool.query('DELETE FROM users WHERE id = $1 AND email = $2', [
+      user.id,
+      email,
+    ]);
     assert.equal(deleted.rowCount, 1);
     await pool.end();
   });
 
   await assert.rejects(
     () => auth.changePassword(user.id, 'Incorrecta1', 'Nueva123'),
-    /contraseña actual es incorrecta/i
+    /contraseña actual es incorrecta/i,
   );
   await assert.rejects(
     () => auth.changePassword(user.id, 'Actual123', 'Actual123'),
-    /debe ser diferente/i
+    /debe ser diferente/i,
   );
 
   await auth.changePassword(user.id, 'Actual123', 'Nueva123');

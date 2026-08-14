@@ -1036,3 +1036,96 @@ El usuario solicitó rediseñar por completo la interfaz para que resulte atract
 **Archivos afectados.** Se modificaron los tres archivos CSS, las 18 páginas HTML y 17 módulos JavaScript; se crearon `public/js/comun/icons.js`, `theme-init.js`, `theme.js` y `charts.js`. No se tocó ningún archivo de `src`, ni la base de datos, ni las migraciones.
 
 **Pendiente de este trabajo.** Falta la confirmación visual del usuario en un navegador real: revisar las pantallas en computadora, tablet y celular, comprobar el menú deslizante y la barra inferior, alternar entre tema claro y oscuro, y verificar las gráficas con mediciones reales. Después de esa revisión el cambio puede publicarse en Render, teniendo en cuenta que la migración `003_exercise_status.sql` sigue pendiente en Neon y bloquea el despliegue del código de biblioteca de ejercicios.
+
+## Continuación del 13 de agosto de 2026
+
+Al iniciar la sesión el usuario pidió releer este documento completo, recuperar el punto exacto donde quedó el trabajo del día anterior, recibir una sugerencia sobre cómo continuar y renovó explícitamente el acuerdo de registrar aquí absolutamente todo lo que se converse, se proponga y se decida a partir de ahora.
+
+Se revisó el estado de Git antes de sugerir nada: la rama activa es `main`, coincide con el historial esperado y el último commit es `701ec18` ("Using claude update", 12 de agosto a las 22:32), que corresponde exactamente al rediseño completo de interfaz documentado en la sección anterior (18 páginas HTML, los tres CSS y los módulos JavaScript nuevos y modificados). No quedó ningún trabajo del 12 de agosto sin documentar.
+
+Se detectó un único cambio local sin confirmar: `public/js/atleta/checkin.js` aparece modificado, pero la diferencia real es únicamente la eliminación del salto de línea final del archivo; el contenido JavaScript es idéntico byte a byte salvo por eso. Es probable que lo haya producido el editor al abrir el archivo (el sistema señaló que el usuario tiene ese archivo abierto en el IDE). No representa trabajo funcional nuevo ni necesita documentarse como cambio de producto; queda pendiente que el usuario decida si descarta ese cambio de formato o lo conserva.
+
+### Punto exacto heredado
+
+Según la última sección registrada (12 de agosto), sigue pendiente, en este orden recomendado:
+
+1. Confirmación visual del rediseño en el navegador (computadora, tablet, celular; menú deslizante y barra inferior; tema claro/oscuro; gráficas de progreso con datos reales).
+2. Confirmación visual de que el escape de HTML funciona (nombre con `<`/`>`, mensaje de chat con `<script>` de prueba).
+3. Aplicar la migración `003_exercise_status.sql` en Neon (pendiente desde el 11 de agosto; bloquea publicar en Render el código de biblioteca de ejercicios).
+4. Publicar en Render el rediseño junto con la corrección de XSS, y repetir ambas confirmaciones ya en producción.
+5. Decidir si se corrige ahora la falta de verificación de pertenencia en `startWorkout`/`finishWorkout` (hallazgo menor del 12 de agosto).
+6. Prueba de humo completa del despliegue público y ampliación de pruebas automatizadas (prioridad ya documentada el 11 de agosto).
+
+### Sugerencia para hoy
+
+Se recomendó al usuario empezar por el paso 1 (revisión visual local del rediseño), porque es el único punto que no depende de tocar Neon ni Render y porque cualquier ajuste visual que se detecte conviene corregirlo antes de aplicar la migración y publicar. Queda pendiente la respuesta del usuario sobre por dónde continuar exactamente.
+
+### El tema oscuro pasa a ser el predeterminado
+
+El usuario pidió que el modo oscuro sea siempre el predeterminado. Hasta ahora la aplicación seguía la preferencia del sistema operativo: quien tuviera Windows en modo claro veía GymTrack en claro. Se interpretó la solicitud como que el oscuro sea el punto de partida en todos los casos, conservando el botón para cambiar a claro manualmente; esa elección manual se sigue recordando en el navegador.
+
+**Decisión de implementación.** En lugar de forzar el oscuro desde JavaScript sobre una base clara, se invirtió la base del sistema de diseño. El oscuro es ahora el tema declarado en `:root`, por lo que es lo que se ve incluso antes de que corra cualquier script; el claro pasó a ser un bloque de excepción `:root[data-theme='light']`. Esto evita por completo el destello de fondo claro al abrir cada pantalla y elimina la dependencia de la preferencia del sistema.
+
+**Cambios realizados:**
+
+- `public/css/base.css`: los tokens de color de `:root` se reemplazaron por la paleta oscura y `color-scheme` pasó de `light` a `dark`. Se eliminaron los dos bloques anteriores —el `@media (prefers-color-scheme: dark)` y el `:root[data-theme='dark']`— y en su lugar quedó un único bloque `:root[data-theme='light']` con la paleta clara. La aplicación ya no consulta `prefers-color-scheme` en ninguna parte. El resto del CSS no necesitó cambios porque cada componente lee sus colores de esos tokens.
+- `public/js/comun/theme-init.js`: antes marcaba el documento cuando había cualquier tema guardado; ahora solo lo marca cuando la elección guardada es `light`. Si no hay nada guardado, la página arranca en oscuro.
+- `public/js/comun/theme.js`: `currentTheme()` ya no consulta `matchMedia`, sino que devuelve `light` únicamente si el documento está marcado así y `dark` en cualquier otro caso. Se eliminó el escucha de cambios de la preferencia del sistema, que dejó de tener sentido.
+- Las 18 páginas HTML cambiaron `<meta name="color-scheme" content="light dark">` por `"dark light"`, para que el navegador pinte el lienzo inicial en oscuro antes incluso de aplicar la hoja de estilos.
+
+No se tocó ningún archivo de `src`, ni la API, ni la base de datos, ni las migraciones. El cambio es exclusivamente de capa visual.
+
+**Verificaciones ejecutadas.** `node --check` sobre los dos módulos de tema, sin errores. Comprobación programática de que las llaves de `base.css` quedan balanceadas, de que ya no existe ninguna referencia a `prefers-color-scheme` y de que sí existe el bloque `:root[data-theme='light']`. `git diff --check` no reportó errores de formato. `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas. Con el servidor local levantado se confirmó `{"status":"ok"}` en `/api/health`, que la hoja `/css/base.css` servida contiene una sola aparición de `data-theme` y ninguna de `prefers-color-scheme`, y que tanto `/` como `/atleta/panel.html` entregan ya el meta `content="dark light"`.
+
+**Pendiente de este cambio.** Falta la confirmación visual del usuario en el navegador: abrir la aplicación con el sistema operativo en modo claro y comprobar que aun así arranca en oscuro, cambiar manualmente a claro con el botón, recargar y verificar que la elección se conserva, y volver a oscuro. Conviene revisarlo tanto en las pantallas de acceso como dentro de la aplicación autenticada.
+
+### Legibilidad de todo el JavaScript
+
+El usuario observó que muchos archivos JavaScript tenían todo el código apretado en una sola línea y pidió que cada instrucción ocupe su propio renglón, para poder leer el programa con facilidad. Preguntó además qué tan complicado era el cambio.
+
+**Diagnóstico.** Se midieron los 60 archivos `.js` del proyecto. 33 ya eran legibles; **27 tenían líneas de más de 200 caracteres** y **11 de ellos eran literalmente un único renglón**. El peor caso era `public/js/compartido/perfil.js`, con 2.273 caracteres en una sola línea. Los CSS ya se habían reescrito legibles durante el rediseño del 12 de agosto, pero el JavaScript había quedado pendiente.
+
+**Respuesta dada y decisión.** A mano el trabajo es tedioso y arriesgado; con un formateador automático es prácticamente trivial y sin riesgo de alterar el comportamiento, porque la herramienta interpreta el código como estructura y lo vuelve a escribir cambiando solo espacios y saltos. Se propusieron dos alcances y **el usuario eligió el más completo: formateo automático más una segunda pasada a mano con comentarios en español**, al estilo de los CSS del rediseño.
+
+**Herramienta incorporada.** Se instaló **Prettier** como dependencia de desarrollo (no se envía al navegador; `npm audit` siguió sin vulnerabilidades). Se añadieron:
+
+- `.prettierrc.json` con el estilo del proyecto: 100 columnas, indentación de 2 espacios, comillas simples, punto y coma, coma final y saltos de línea LF.
+- `.prettierignore`, que deja fuera el CSS, el HTML y el resto de formatos. Se decidió expresamente **no** reformatear CSS ni HTML porque ya se escribieron a mano con una distribución pensada y volver a tocarlos solo ensuciaría el historial.
+- Dos comandos nuevos en `package.json`: `npm run format` aplica el estilo y `npm run format:check` comprueba que se cumple, para que la legibilidad no se vuelva a perder.
+
+**Primera pasada: formateo automático.** Antes de tocar nada se guardó una copia de seguridad de los 60 archivos. Prettier reformateó todo el JavaScript de `src`, `public/js`, `database` y `test`. Los archivos con líneas ilegibles bajaron de 27 a 15.
+
+**Verificación de que el programa no cambió.** Se escribió una comprobación que analiza cada archivo con el propio analizador sintáctico de Prettier y compara el **árbol sintáctico** anterior con el nuevo, ignorando únicamente posiciones y comentarios. Resultado: **los 60 archivos tienen un árbol sintáctico idéntico**, es decir, ejecutan exactamente lo mismo. Se comprobó de paso que el cambio de saltos de línea CRLF a LF tampoco altera nada, porque JavaScript ya normaliza los saltos dentro de las plantillas de texto.
+
+**Segunda pasada: reescritura a mano con comentarios.** Las 15 líneas largas que quedaban eran todas plantillas de HTML dentro de comillas, que un formateador no parte y hace bien en no partir. Se reescribieron a mano 15 archivos, separando el HTML en varias líneas, extrayendo funciones de dibujado con nombre (`renderPlan`, `renderCheckin`, `renderRoutineCard`, `renderSetRow`, etc.) y añadiendo comentarios en español que explican qué hace cada bloque y por qué:
+
+`public/js/compartido/perfil.js`, `public/js/atleta/checkin.js`, `historial.js`, `nutricion.js`, `rutinas.js`, `public/js/entrenador/atletas.js`, `invitaciones.js`, `checkins.js`, `nutricion.js`, `rutinas.js`, `ejercicios.js`, `public/js/comun/charts.js`, `icons.js`, y los repositorios `src/repositories/messages.repository.js` y `tracking.repository.js`, cuyas consultas SQL quedaron indentadas por cláusulas y documentadas.
+
+Los comentarios añadidos no son descriptivos de lo obvio: explican decisiones reales del código, como por qué un campo vacío se guarda como nulo y no como cero, por qué hay que volver a conectar los manejadores después de cada dibujado, por qué el `trainer_id` de una consulta es en realidad un control de permiso, o por qué se vacía el reproductor antes de cerrar la ventana del video.
+
+**Resultado final.** De 60 archivos, **59 quedaron completamente legibles**. El único que conserva una línea larga es `public/js/comun/password-toggle.js`, y se dejó a propósito: esa línea es la cadena de coordenadas de un icono SVG, un dato de dibujo indivisible, no lógica de programa.
+
+**Verificaciones ejecutadas.** Los 60 archivos pasaron `node --check`. `npm run format:check` confirma que todo el proyecto cumple el estilo. La aplicación completa se importó sin errores. Se escribió una comprobación adicional que valida que cada `import` del navegador apunte a un archivo existente y que cada identificador buscado con `querySelector('#…')` exista en el HTML de su página; encontró solo dos avisos, ambos correctos y esperados (`#workout`, que crea el propio JavaScript al dibujar el formulario de entrenamiento, y `socket.io.js`, que sirve la librería en tiempo de ejecución). Con el servidor levantado se comprobó `{"status":"ok"}` en `/api/health` y que **los 45 recursos públicos —páginas y módulos— responden 200**. `npm.cmd test` terminó con 1 prueba aprobada y 0 fallidas.
+
+**Coste asumido conscientemente.** El JavaScript que descarga el navegador creció de 57 KB a 72 KB por los espacios y comentarios. Se aceptó porque para esta aplicación es irrelevante y, si algún día importara, la solución correcta es activar compresión en el servidor, no volver a escribir código ilegible.
+
+**Pendiente de este cambio.** Los 45 archivos que solo pasaron por el formateador tienen garantía matemática de no haber cambiado. Los 15 reescritos a mano no la tienen, porque se reestructuraron a propósito, así que necesitan confirmación visual en el navegador: perfil y cambio de contraseña, check-in del atleta y su revisión por el entrenador, historial, ambas pantallas de nutrición, lista y detalle de rutinas, registro de un entrenamiento completo con instrucciones y video, biblioteca de ejercicios, lista de atletas, invitaciones y las gráficas de progreso.
+
+## Continuación del 14 de agosto de 2026
+
+Al iniciar la sesión el usuario pidió releer este documento completo, recibir una propuesta sobre cómo continuar, y renovó el acuerdo de registrar aquí absolutamente todo lo que se trabaje hoy para poder retomar el proyecto sin pérdida de contexto en el futuro.
+
+Se revisó `git status` antes de proponer nada. La rama activa sigue siendo `main` y el último commit continúa siendo `701ec18` ("Using claude update"). Existe un bloque grande de cambios locales sin confirmar (unos 80 archivos modificados más `.prettierrc.json` y `.prettierignore` sin rastrear); se comparó contra la bitácora y coincide exactamente con el trabajo ya documentado el 13 de agosto: el tema oscuro como predeterminado y la reescritura de legibilidad de todo el JavaScript con Prettier. No se encontró ningún trabajo sin documentar ni ninguna pérdida de contexto entre sesiones.
+
+### Propuesta presentada al usuario
+
+Se recomendó seguir, en este orden, con la cadena de pendientes ya registrada el 12 y 13 de agosto, sin agregar funciones nuevas todavía:
+
+1. Confirmación visual en el navegador del rediseño completo y, en particular, de los 15 archivos JavaScript reescritos a mano (sin garantía matemática de equivalencia, a diferencia de los 45 solo formateados por Prettier).
+2. Confirmar en un commit el bloque de cambios del 13 de agosto una vez validado visualmente.
+3. Aplicar la migración `003_exercise_status.sql` en Neon, pendiente desde el 11 de agosto y que bloquea publicar en Render la biblioteca de ejercicios.
+4. Publicar en Render el rediseño y la migración, y repetir las confirmaciones ya en producción.
+5. Decidir si se corrige ahora el hallazgo menor del 12 de agosto sobre `startWorkout`/`finishWorkout` (falta comprobar que el día y los ejercicios enviados por el atleta pertenezcan realmente a la rutina asignada).
+6. Prueba de humo completa del despliegue público y ampliación de pruebas automatizadas (solo existe una prueba en todo el proyecto).
+
+Se sugirió comenzar por el punto 1 por ser el único que no depende de tocar Neon ni Render. Queda pendiente la decisión del usuario sobre por dónde continuar exactamente.

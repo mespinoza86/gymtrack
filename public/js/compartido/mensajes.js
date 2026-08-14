@@ -13,10 +13,14 @@ let active = null;
 async function loadConversations() {
   const { conversations } = await api('/api/messages');
   list.innerHTML = conversations.length
-    ? conversations.map((conversation) => `<button class="list-item" data-id="${conversation.id}">
+    ? conversations
+        .map(
+          (conversation) => `<button class="list-item" data-id="${conversation.id}">
         <strong>${escapeHtml(conversation.other_first_name)} ${escapeHtml(conversation.other_last_name)}</strong>
         <small>${escapeHtml(conversation.last_message || 'Inicia la conversación')}</small>
-      </button>`).join('')
+      </button>`,
+        )
+        .join('')
     : '<div class="empty">Sin conversaciones.</div>';
 
   /* Se limita la búsqueda a la lista para no capturar otros
@@ -47,10 +51,14 @@ async function refresh() {
 
 function render(messages) {
   chat.innerHTML = messages.length
-    ? messages.map((item) => `<div class="bubble ${item.sender_id === user.id ? 'mine' : ''}">
+    ? messages
+        .map(
+          (item) => `<div class="bubble ${item.sender_id === user.id ? 'mine' : ''}">
         ${escapeHtml(item.body)}
         <small>${escapeHtml(item.first_name || '')} · ${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
-      </div>`).join('')
+      </div>`,
+        )
+        .join('')
     : '<div class="empty">Todavía no hay mensajes. Escribe el primero.</div>';
   chat.scrollTop = chat.scrollHeight;
 }
@@ -59,7 +67,10 @@ document.querySelector('#send').onsubmit = async (event) => {
   event.preventDefault();
   if (!active) return showMessage(message, 'Selecciona una conversación primero.', 'error');
   try {
-    await api(`/api/messages/${active}`, { method: 'POST', body: JSON.stringify({ body: event.target.body.value }) });
+    await api(`/api/messages/${active}`, {
+      method: 'POST',
+      body: JSON.stringify({ body: event.target.body.value }),
+    });
     event.target.reset();
     await refresh();
   } catch (error) {

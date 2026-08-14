@@ -7,11 +7,12 @@ const sessionUser = (user) => ({
   email: user.email,
   firstName: user.first_name,
   lastName: user.last_name,
-  role: user.role
+  role: user.role,
 });
 
 export async function register(input) {
-  if (await users.findUserByEmail(input.email)) throw new HttpError(409, 'El correo ya está registrado');
+  if (await users.findUserByEmail(input.email))
+    throw new HttpError(409, 'El correo ya está registrado');
   const passwordHash = await bcrypt.hash(input.password, 12);
   try {
     return sessionUser(await users.createUser({ ...input, passwordHash }));
@@ -23,7 +24,8 @@ export async function register(input) {
 
 export async function login(email, password) {
   const user = await users.findUserByEmail(email);
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) throw new HttpError(401, 'Correo o contraseña incorrectos');
+  if (!user || !(await bcrypt.compare(password, user.password_hash)))
+    throw new HttpError(401, 'Correo o contraseña incorrectos');
   return sessionUser(user);
 }
 

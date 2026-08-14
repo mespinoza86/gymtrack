@@ -20,16 +20,19 @@ export async function setExerciseStatus(id, trainerId, isActive) {
 }
 export async function deleteExercise(id, trainerId) {
   const result = await repository.deleteExercise(id, trainerId);
-  if (result === 'used') throw new HttpError(409, 'Este ejercicio forma parte de una rutina y solo puede desactivarse');
+  if (result === 'used')
+    throw new HttpError(409, 'Este ejercicio forma parte de una rutina y solo puede desactivarse');
   if (result === 'missing') throw new HttpError(404, 'Ejercicio personalizado no encontrado');
 }
 
 export async function createRoutine(trainerId, input) {
-  if (input.athleteId && !(await activeLink(trainerId, input.athleteId))) throw new HttpError(403, 'El atleta no está vinculado contigo');
+  if (input.athleteId && !(await activeLink(trainerId, input.athleteId)))
+    throw new HttpError(403, 'El atleta no está vinculado contigo');
   return repository.createRoutine(trainerId, input);
 }
 export async function updateRoutine(id, trainerId, input) {
-  if (input.athleteId && !(await activeLink(trainerId, input.athleteId))) throw new HttpError(403, 'El atleta no está vinculado contigo');
+  if (input.athleteId && !(await activeLink(trainerId, input.athleteId)))
+    throw new HttpError(403, 'El atleta no está vinculado contigo');
   const routine = await repository.replaceRoutine(id, trainerId, input);
   if (!routine) throw new HttpError(404, 'Rutina no encontrada');
   return routine;

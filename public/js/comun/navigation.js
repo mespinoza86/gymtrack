@@ -17,9 +17,14 @@ const menus = {
       ['Nutrición', '/entrenador/nutricion.html', 'nutricion'],
       ['Check-ins', '/entrenador/checkins.html', 'checkins'],
       ['Mensajes', '/compartido/mensajes.html', 'mensajes'],
-      ['Perfil', '/compartido/perfil.html', 'perfil']
+      ['Perfil', '/compartido/perfil.html', 'perfil'],
     ],
-    tabs: ['/entrenador/panel.html', '/entrenador/atletas.html', '/entrenador/rutinas.html', '/compartido/mensajes.html']
+    tabs: [
+      '/entrenador/panel.html',
+      '/entrenador/atletas.html',
+      '/entrenador/rutinas.html',
+      '/compartido/mensajes.html',
+    ],
   },
   athlete: {
     links: [
@@ -30,10 +35,15 @@ const menus = {
       ['Progreso', '/atleta/progreso.html', 'progreso'],
       ['Check-in', '/atleta/checkin.html', 'checkins'],
       ['Mensajes', '/compartido/mensajes.html', 'mensajes'],
-      ['Perfil', '/compartido/perfil.html', 'perfil']
+      ['Perfil', '/compartido/perfil.html', 'perfil'],
     ],
-    tabs: ['/atleta/panel.html', '/atleta/rutinas.html', '/atleta/progreso.html', '/compartido/mensajes.html']
-  }
+    tabs: [
+      '/atleta/panel.html',
+      '/atleta/rutinas.html',
+      '/atleta/progreso.html',
+      '/compartido/mensajes.html',
+    ],
+  },
 };
 
 const brand = `<span class="logo-mark">${icon('pesa')}</span>Gym<span>Track</span>`;
@@ -45,7 +55,10 @@ function initials(user) {
 
 function navLinks(links) {
   return links
-    .map(([label, url, name]) => `<a class="nav-link${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span></a>`)
+    .map(
+      ([label, url, name]) =>
+        `<a class="nav-link${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span></a>`,
+    )
     .join('');
 }
 
@@ -103,7 +116,10 @@ function buildBottomNav(menu, openDrawer) {
   const tabs = menu.tabs
     .map((url) => menu.links.find((link) => link[1] === url))
     .filter(Boolean)
-    .map(([label, url, name]) => `<li><a class="tab${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span></a></li>`)
+    .map(
+      ([label, url, name]) =>
+        `<li><a class="tab${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span></a></li>`,
+    )
     .join('');
 
   nav.innerHTML = `<ul>${tabs}<li><button type="button" class="tab" id="more-tab">${icon('mas')}<span>Más</span></button></li></ul>`;
@@ -115,8 +131,10 @@ export async function initNavigation() {
   const user = await currentUser();
 
   /* Un atleta no debe quedarse en una pantalla de entrenador ni al revés. */
-  const expected = location.pathname.includes('/entrenador/') ? 'trainer'
-    : location.pathname.includes('/atleta/') ? 'athlete'
+  const expected = location.pathname.includes('/entrenador/')
+    ? 'trainer'
+    : location.pathname.includes('/atleta/')
+      ? 'athlete'
       : null;
   if (expected && user.role !== expected) {
     location.href = user.role === 'trainer' ? '/entrenador/panel.html' : '/atleta/panel.html';
@@ -144,14 +162,18 @@ export async function initNavigation() {
   };
 
   scrim.onclick = closeDrawer;
-  addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDrawer(); });
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeDrawer();
+  });
 
   shell.prepend(buildTopbar(openDrawer));
   shell.append(scrim, buildBottomNav(menu, openDrawer));
 
   /* Si la ventana crece hasta el tamaño de escritorio, el menú
      deslizante deja de tener sentido y debe cerrarse. */
-  matchMedia('(min-width: 1024px)').addEventListener('change', (event) => { if (event.matches) closeDrawer(); });
+  matchMedia('(min-width: 1024px)').addEventListener('change', (event) => {
+    if (event.matches) closeDrawer();
+  });
 
   return user;
 }

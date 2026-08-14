@@ -10,7 +10,9 @@ try {
     filename TEXT PRIMARY KEY,
     executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
-  const applied = new Set((await pool.query('SELECT filename FROM schema_migrations')).rows.map((row) => row.filename));
+  const applied = new Set(
+    (await pool.query('SELECT filename FROM schema_migrations')).rows.map((row) => row.filename),
+  );
   const files = (await fs.readdir(directory)).filter((file) => file.endsWith('.sql')).sort();
   for (const filename of files) {
     if (applied.has(filename)) continue;

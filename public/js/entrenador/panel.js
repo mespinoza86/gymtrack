@@ -8,7 +8,7 @@ await initNavigation();
 const [{ people }, { routines }, { checkins }] = await Promise.all([
   api('/api/links/people'),
   api('/api/routines'),
-  api('/api/tracking/checkins')
+  api('/api/tracking/checkins'),
 ]);
 
 const stat = (label, value, name) =>
@@ -17,12 +17,17 @@ const stat = (label, value, name) =>
 document.querySelector('#stats').innerHTML = [
   stat('Atletas activos', people.length, 'atletas'),
   stat('Rutinas creadas', routines.length, 'rutinas'),
-  stat('Check-ins por revisar', checkins.filter((item) => !item.reviewed_at).length, 'checkins')
+  stat('Check-ins por revisar', checkins.filter((item) => !item.reviewed_at).length, 'checkins'),
 ].join('');
 
 document.querySelector('#people').innerHTML = people.length
-  ? people.slice(0, 6).map((person) => `<div class="list-item">
+  ? people
+      .slice(0, 6)
+      .map(
+        (person) => `<div class="list-item">
       <strong>${escapeHtml(person.first_name)} ${escapeHtml(person.last_name)}</strong>
       <p>${person.latest_weight ? `${escapeHtml(person.latest_weight)} kg` : 'Sin mediciones registradas'}</p>
-    </div>`).join('')
+    </div>`,
+      )
+      .join('')
   : '<div class="empty">Aún no tienes atletas vinculados.</div>';

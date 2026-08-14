@@ -4,7 +4,9 @@ import { initializePasswordToggles } from '../comun/password-toggle.js';
 import { themeButton } from '../comun/theme.js';
 
 initializePasswordToggles();
-document.querySelector('.auth-panel').append(Object.assign(themeButton(), { className: 'icon-btn auth-theme' }));
+document
+  .querySelector('.auth-panel')
+  .append(Object.assign(themeButton(), { className: 'icon-btn auth-theme' }));
 
 document.querySelector('#register').onsubmit = async (event) => {
   event.preventDefault();
@@ -20,7 +22,10 @@ document.querySelector('#register').onsubmit = async (event) => {
   delete data.confirmPassword;
 
   try {
-    const { user } = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(data) });
+    const { user } = await api('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
     location.href = homeFor(user.role);
   } catch (error) {
     showMessage(message, error.message, 'error');
