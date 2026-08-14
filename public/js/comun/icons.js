@@ -39,6 +39,21 @@ const paths = {
   pesa: '<path d="M4 9v6"/><path d="M7 6.5v11"/><path d="M17 6.5v11"/><path d="M20 9v6"/><path d="M7 12h10"/>',
   chequeo: '<path d="m5 13 4.5 4.5L19 7"/>',
   reloj: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  agregar: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  basura:
+    '<path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/>' +
+    '<path d="M6.5 7l1 12.5a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/>' +
+    '<path d="M10 11v6"/><path d="M14 11v6"/>',
+  /* Dos hojas superpuestas: se usa para el día que repite a otro. */
+  copiar:
+    '<rect x="9" y="9" width="11.5" height="11.5" rx="2.5"/>' +
+    '<path d="M15 6.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v6.5A2.5 2.5 0 0 0 6 15h.5"/>',
+  calendario:
+    '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>' +
+    '<path d="M3.5 10h17"/><path d="M8 3.5V6"/><path d="M16 3.5V6"/>',
+  anterior: '<path d="m14.5 5-7 7 7 7"/>',
+  siguiente: '<path d="m9.5 5 7 7-7 7"/>',
+  deshacer: '<path d="M3.5 8.5h11a5 5 0 0 1 0 10h-6"/><path d="M7 4.5 3 8.5l4 4"/>',
 };
 
 /* Devuelve el SVG del icono. `size` permite ajustarlo cuando el CSS

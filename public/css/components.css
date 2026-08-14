@@ -337,6 +337,382 @@ button.list-item.active { border-color: var(--brand); background: var(--brand-so
 .set { display: grid; gap: var(--sp-2); }
 .set > strong { font-size: 14px; color: var(--muted); }
 
+/* ---------- Constructor de rutinas semanales ---------- */
+
+/* Tira de los siete días.
+
+   Se escribe primero para móvil: los siete caben siempre en una fila, sin
+   desplazamiento horizontal, porque una semana se entiende de un vistazo o
+   no se entiende. Ahí la ficha solo lleva el icono y "D3"; el estado se lee
+   en la cabecera del editor, justo debajo. A partir de 900 px, donde sí hay
+   sitio, cada ficha recupera "Día 3" y su línea de estado.
+
+   No se reutiliza el nombre .tab porque ya lo ocupa la barra inferior. */
+.day-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: var(--sp-4) 0 var(--sp-5);
+}
+
+.day-tab {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: var(--sp-2) 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
+}
+
+.day-tab:hover { background: var(--surface-hover); border-color: var(--line-strong); }
+.day-tab:active { transform: translateY(1px); }
+.day-tab:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.day-tab strong { font-size: 11px; font-weight: 700; }
+.day-tab small { display: none; color: var(--muted); font-size: 11px; line-height: 1.3; }
+
+/* "Día " completo solo cuando hay sitio; en móvil queda "D3". */
+.day-tab-word { display: none; }
+
+.day-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--pill);
+  background: var(--surface-2);
+  color: var(--muted);
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.day-tab-icon svg { width: 15px; height: 15px; }
+
+.day-tab.active { border-color: var(--brand); background: var(--brand-soft); }
+.day-tab.active .day-tab-icon { background: var(--brand); color: var(--brand-ink); }
+.day-tab.active small { color: var(--ink-soft); }
+
+/* Un día libre se muestra apagado a propósito: no hay nada que preparar. */
+.day-tab.is-rest strong { color: var(--ink-soft); }
+
+/* Aviso silencioso: es un día de entrenamiento que todavía está vacío y el
+   servidor rechazaría la rutina si se guardara así. */
+.day-tab.is-warn .day-tab-icon { background: var(--warn-soft); color: var(--warn); }
+.day-tab.is-warn small { color: var(--warn); }
+
+@media (min-width: 900px) {
+  .day-tabs { gap: var(--sp-2); }
+  .day-tab { gap: 3px; padding: var(--sp-3) var(--sp-2); border-radius: var(--r-lg); }
+  .day-tab strong { font-size: 14px; }
+  .day-tab small { display: block; }
+  .day-tab-word { display: inline; }
+  .day-tab-short { display: none; }
+  .day-tab-icon { width: 34px; height: 34px; margin-bottom: 2px; }
+  .day-tab-icon svg { width: 18px; height: 18px; }
+}
+
+/* Cabecera del editor: en móvil es donde se lee el estado del día que las
+   fichas ya no pueden mostrar. */
+.day-editor { border-top: 1px solid var(--line); padding-top: var(--sp-5); }
+
+.day-editor-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+}
+
+.day-editor-head h3 { margin: 0; }
+
+/* Control segmentado para opciones excluyentes que caben en una fila.
+
+   Las columnas se reparten a partes iguales y el texto puede ocupar dos
+   líneas: en móvil "Entrenamiento" no cabe en una. Por eso la forma es de
+   rectángulo redondeado y no de píldora, que con dos líneas se deforma. */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.segmented-option {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--r);
+  padding: 6px var(--sp-2);
+  background: none;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+
+.segmented-option:hover { background: var(--surface-hover); color: var(--ink); }
+.segmented-option:focus-visible { outline: none; box-shadow: var(--ring); }
+.segmented-option.active { background: var(--brand); color: var(--brand-ink); }
+.segmented-option.active:hover { background: var(--brand-hover); }
+
+@media (min-width: 640px) {
+  .segmented { border-radius: var(--pill); }
+  .segmented-option { min-height: 38px; border-radius: var(--pill); }
+}
+
+/* Fichas sueltas para opciones que no caben en una sola fila. Se reparten
+   en las líneas que hagan falta, en vez de apilarse dentro de una cápsula. */
+.chip-group { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.chip {
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  padding: 8px var(--sp-4);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+
+.chip:hover { background: var(--surface-hover); color: var(--ink); }
+.chip:focus-visible { outline: none; box-shadow: var(--ring); }
+.chip.active { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.chip.active:hover { background: var(--brand-hover); }
+
+/* Fila de ejercicio. El ejercicio ocupa el ancho completo y los tres números
+   comparten la fila siguiente, que en pantallas muy estrechas baja a dos. */
+.exercise-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.exercise-row-title { font-size: 14px; color: var(--muted); }
+
+/* Series, repeticiones y descanso son tres números cortos: caben los tres en
+   una fila incluso en un teléfono. La etiqueta va más pequeña y sin partir
+   para que las tres queden alineadas a la misma altura. */
+.form-row.compact { grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); }
+.form-row.compact .field { margin-bottom: 0; }
+.form-row.compact label { font-size: 12px; white-space: nowrap; }
+.exercise-row .field:last-child { margin-bottom: 0; }
+
+.icon-btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 32%, transparent); }
+.icon-btn.danger:hover { background: var(--danger-soft); }
+
+/* ---------- Semana del atleta ---------- */
+
+.week-nav { display: flex; align-items: center; gap: var(--sp-3); }
+.week-nav strong { font-size: 14px; white-space: nowrap; }
+.icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Los siete días, cada uno con su anillo de avance. Como en el constructor,
+   caben siempre en una fila: la semana se lee de un vistazo. */
+.week-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: var(--sp-4) 0 var(--sp-5);
+}
+
+.week-day {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: var(--sp-2) 2px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.week-day:hover { background: var(--surface-2); }
+.week-day:focus-visible { outline: none; box-shadow: var(--ring); }
+.week-day.active { border-color: var(--brand); background: var(--brand-soft); }
+
+.week-day small { font-size: 11px; color: var(--muted); }
+.week-day.active small { color: var(--ink-soft); }
+.week-day-word { display: none; }
+
+.week-day-ring { position: relative; display: block; width: 100%; max-width: 44px; }
+.week-day-ring .ring { display: block; width: 100%; height: auto; }
+
+.ring-track { fill: none; stroke: var(--line); stroke-width: 3; }
+
+/* El trazo se dibuja desde arriba y en sentido horario: sin el giro
+   empezaría a las tres en punto. */
+.ring-value {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset var(--slow) var(--ease);
+}
+
+.week-day-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.week-day-mark svg { width: 16px; height: 16px; }
+.week-day.is-done .week-day-mark { color: var(--brand); }
+.week-day.is-rest .week-day-mark { color: var(--muted); }
+
+@media (min-width: 900px) {
+  .week-days { gap: var(--sp-2); }
+  .week-day { padding: var(--sp-3) var(--sp-2); }
+  .week-day small { font-size: 12px; }
+  .week-day-word { display: inline; }
+  .week-day-short { display: none; }
+}
+
+/* ---------- Registro del entrenamiento ---------- */
+
+.day-progress { display: grid; gap: 6px; margin-bottom: var(--sp-5); }
+.day-progress small { color: var(--muted); font-size: 13px; }
+
+/* `progress` se estilan con seudoelementos distintos en cada motor, así que
+   hay que declarar los dos por separado; no admiten agruparse en un selector. */
+.day-progress progress {
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: var(--pill);
+  background: var(--surface-2);
+  appearance: none;
+}
+
+.day-progress progress::-webkit-progress-bar { background: var(--surface-2); border-radius: var(--pill); }
+.day-progress progress::-webkit-progress-value { background: var(--brand); border-radius: var(--pill); }
+.day-progress progress::-moz-progress-bar { background: var(--brand); border-radius: var(--pill); }
+
+.day-done {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.day-done svg { width: 20px; height: 20px; }
+
+.exercise-cards { display: grid; gap: var(--sp-3); }
+
+.exercise-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4);
+  background: var(--surface);
+  transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+
+.exercise-card.is-done { border-color: color-mix(in srgb, var(--brand) 42%, transparent); background: var(--brand-soft); }
+
+.exercise-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.exercise-card-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+
+.exercise-tick {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--pill);
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.exercise-tick svg { width: 18px; height: 18px; }
+
+.exercise-done-summary { color: var(--ink-soft); font-size: 14px; }
+
+.set-list { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+
+/* Una serie por fila: número, repeticiones, peso y la casilla de dolor.
+   En un teléfono la casilla baja sola a la línea siguiente. */
+.set-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
+.set-row .field { margin-bottom: 0; flex: 1 1 80px; }
+.set-row .field label { font-size: 11px; }
+
+.set-number {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  margin-bottom: 8px;
+  border-radius: var(--pill);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.set-pain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.set-pain input { accent-color: var(--danger); width: 18px; height: 18px; }
+
+.finish-day {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
 /* ---------- Modal de video ---------- */
 
 .video-modal {
@@ -370,6 +746,10 @@ button.list-item.active { border-color: var(--brand); background: var(--brand-so
 }
 
 .video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+/* Salida de emergencia: algunos videos los bloquea su propio autor y eso no
+   se puede arreglar desde aquí, así que el enlace directo siempre está. */
+.video-fallback { margin: var(--sp-3) 0 0; color: var(--muted); font-size: 13px; text-align: center; }
 
 /* ---------- Gráficas ---------- */
 

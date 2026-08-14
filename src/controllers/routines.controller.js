@@ -38,13 +38,35 @@ export async function createRoutine(req, res) {
 export async function updateRoutine(req, res) {
   res.json({ routine: await service.updateRoutine(req.params.id, req.session.user.id, req.body) });
 }
+export async function progress(req, res) {
+  res.json(await service.routineProgress(req.params.id, req.session.user));
+}
 export async function start(req, res) {
   res
     .status(201)
-    .json({ session: await service.startWorkout(req.session.user.id, req.body.routineDayId) });
+    .json(
+      await service.startWorkout(
+        req.session.user.id,
+        req.body.routineDayId,
+        req.body.weekNumber ?? 1,
+      ),
+    );
+}
+export async function logExercise(req, res) {
+  res.json(
+    await service.logExercise(
+      req.session.user.id,
+      req.params.id,
+      req.params.exerciseId,
+      req.body.sets,
+    ),
+  );
+}
+export async function unlogExercise(req, res) {
+  res.json(await service.unlogExercise(req.session.user.id, req.params.id, req.params.exerciseId));
 }
 export async function finish(req, res) {
-  res.json({ session: await service.finishWorkout(req.session.user.id, req.params.id, req.body) });
+  res.json(await service.finishWorkout(req.session.user.id, req.params.id, req.body));
 }
 export async function history(req, res) {
   res.json({ workouts: await service.workoutHistory(req.session.user.id) });

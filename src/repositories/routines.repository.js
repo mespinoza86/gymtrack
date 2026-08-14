@@ -90,11 +90,17 @@ export async function deleteExercise(id, userId) {
   });
 }
 
-async function insertRoutine(client, trainerId, input) {
+async function insertRoutine(client, trainerId, input, originRoutineId = null) {
+  /* `end_date` se deriva siempre del inicio y la duración; no se recibe del
+     cliente para que no puedan quedar incoherentes entre sí. */
   const routine = (
     await client.query(
-      `INSERT INTO routines (trainer_id, athlete_id, name, description, status, start_date, end_date)
-    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO routines
+        (trainer_id, athlete_id, name, description, status, start_date, end_date, weeks, origin_routine_id)
+      VALUES ($1,$2,$3,$4,$5,$6,
+        CASE WHEN $6::date IS NULL THEN NULL ELSE $6::date + ($7::int * 7 - 1) END,
+        $7,$8)
+      RETURNING *`,
       [
         trainerId,
         input.athleteId || null,
@@ -102,20 +108,45 @@ async function insertRoutine(client, trainerId, input) {
         input.description || null,
         input.status,
         input.startDate || null,
-        input.endDate || null,
+        input.weeks ?? 1,
+        originRoutineId,
       ],
     )
   ).rows[0];
+
+  /* Una rutina creada desde cero es el origen de su propio linaje. */
+  if (!routine.origin_routine_id) {
+    await client.query('UPDATE routines SET origin_routine_id=id WHERE id=$1', [routine.id]);
+    routine.origin_routine_id = routine.id;
+  }
+
+  /* Los ejercicios ya insertados de cada franja, para poder resolver los
+     días espejo sin volver a consultarlos. */
+  const exercisesByDayOrder = new Map();
+
   for (let dayIndex = 0; dayIndex < input.days.length; dayIndex += 1) {
     const dayInput = input.days[dayIndex];
+    const dayOrder = dayIndex + 1;
+    const dayType = dayInput.dayType ?? 'training';
+
+    /* Un día libre nunca tiene ejercicios ni espejo, aunque el cliente los envíe. */
+    const mirrors = dayType === 'training' ? (dayInput.mirrorsDayOrder ?? null) : null;
+    let exercises = dayType === 'training' ? (dayInput.exercises ?? []) : [];
+
+    /* Si el día apunta a otro y no trae lista propia, se copia la del día
+       espejado. Siempre es una franja anterior, así que ya está resuelta. */
+    if (mirrors && exercises.length === 0) exercises = exercisesByDayOrder.get(mirrors) ?? [];
+
     const day = (
       await client.query(
-        `INSERT INTO routine_days (routine_id,name,day_order,notes) VALUES ($1,$2,$3,$4) RETURNING id`,
-        [routine.id, dayInput.name, dayIndex + 1, dayInput.notes || null],
+        `INSERT INTO routine_days (routine_id,name,day_order,notes,day_type,mirrors_day_order)
+        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [routine.id, dayInput.name, dayOrder, dayInput.notes || null, dayType, mirrors],
       )
     ).rows[0];
-    for (let exerciseIndex = 0; exerciseIndex < dayInput.exercises.length; exerciseIndex += 1) {
-      const item = dayInput.exercises[exerciseIndex];
+
+    for (let exerciseIndex = 0; exerciseIndex < exercises.length; exerciseIndex += 1) {
+      const item = exercises[exerciseIndex];
       await client.query(
         `INSERT INTO routine_exercises
         (routine_day_id,exercise_id,exercise_order,sets,reps,target_weight,rest_seconds,rir,tempo,notes)
@@ -134,21 +165,26 @@ async function insertRoutine(client, trainerId, input) {
         ],
       );
     }
+
+    exercisesByDayOrder.set(dayOrder, exercises);
   }
+
   return routine;
 }
 
 export async function replaceRoutine(id, trainerId, input) {
   return withTransaction(async (client) => {
     const previous = (
-      await client.query('SELECT id FROM routines WHERE id=$1 AND trainer_id=$2 FOR UPDATE', [
-        id,
-        trainerId,
-      ])
+      await client.query(
+        'SELECT id, origin_routine_id FROM routines WHERE id=$1 AND trainer_id=$2 FOR UPDATE',
+        [id, trainerId],
+      )
     ).rows[0];
     if (!previous) return null;
     await client.query("UPDATE routines SET status='archived' WHERE id=$1", [id]);
-    return insertRoutine(client, trainerId, input);
+    /* La versión nueva hereda el linaje para que el progreso ya registrado
+       por el atleta siga siendo visible después de modificar el plan. */
+    return insertRoutine(client, trainerId, input, previous.origin_routine_id || previous.id);
   });
 }
 
@@ -174,7 +210,7 @@ export async function getRoutine(id, user) {
   if (!routine) return null;
   routine.days = (
     await pool.query(
-      `SELECT d.id, d.name, d.day_order, d.notes,
+      `SELECT d.id, d.name, d.day_order, d.notes, d.day_type, d.mirrors_day_order,
       COALESCE(json_agg(json_build_object('id',re.id,'exerciseId',e.id,'name',e.name,'muscleGroup',e.muscle_group,
         'instructions',e.instructions,'mediaUrl',e.media_url,
         'sets',re.sets,'reps',re.reps,'targetWeight',re.target_weight,'restSeconds',re.rest_seconds,'rir',re.rir,
@@ -187,43 +223,271 @@ export async function getRoutine(id, user) {
   return routine;
 }
 
-export async function startWorkout(athleteId, routineDayId) {
-  return (
-    await pool.query(
-      `INSERT INTO workout_sessions (athlete_id,routine_day_id) VALUES ($1,$2) RETURNING *`,
-      [athleteId, routineDayId],
-    )
-  ).rows[0];
+/* ---------- Registro del entrenamiento ---------- */
+
+async function insertSet(client, sessionId, routineExerciseId, item) {
+  await client.query(
+    `INSERT INTO performed_sets (workout_session_id,routine_exercise_id,set_number,reps,weight,rpe,pain,notes)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [
+      sessionId,
+      routineExerciseId,
+      item.setNumber,
+      item.reps,
+      item.weight,
+      item.rpe ?? null,
+      item.pain ?? false,
+      item.notes || null,
+    ],
+  );
 }
 
+/* Vuelve a contar los ejercicios marcados y decide si el día queda cumplido.
+
+   `allowReopen` solo se activa al desmarcar un ejercicio. Al marcar nunca se
+   reabre un día ya cerrado, porque el atleta pudo haberlo cerrado a propósito
+   con menos ejercicios de los planificados. */
+async function refreshCompletion(client, sessionId, routineDayId, allowReopen) {
+  const total = (
+    await client.query('SELECT COUNT(*)::int AS n FROM routine_exercises WHERE routine_day_id=$1', [
+      routineDayId,
+    ])
+  ).rows[0].n;
+  const done = (
+    await client.query(
+      'SELECT COUNT(*)::int AS n FROM workout_exercise_log WHERE workout_session_id=$1',
+      [sessionId],
+    )
+  ).rows[0].n;
+
+  const completed = done >= total;
+  const session = (
+    await client.query(
+      `UPDATE workout_sessions
+        SET completed_at = CASE
+              WHEN $2 THEN COALESCE(completed_at, NOW())
+              WHEN $3 THEN NULL
+              ELSE completed_at END
+      WHERE id=$1 RETURNING *`,
+      [sessionId, completed, allowReopen],
+    )
+  ).rows[0];
+
+  return { session, totalExercises: total, completedExercises: done };
+}
+
+/* Lo que el atleta ya registró en esta sesión: qué ejercicios dio por
+   terminados y con qué series. Sin esto, al volver a un día a medias la
+   pantalla no podría mostrar lo ya hecho ni recuperar los números escritos. */
+async function loggedExercises(client, sessionId) {
+  return (
+    await client.query(
+      `SELECT wel.routine_exercise_id AS "routineExerciseId",
+        COALESCE(
+          json_agg(
+            json_build_object('setNumber', ps.set_number, 'reps', ps.reps,
+              'weight', ps.weight, 'pain', ps.pain)
+            ORDER BY ps.set_number
+          ) FILTER (WHERE ps.id IS NOT NULL),
+          '[]'
+        ) AS sets
+      FROM workout_exercise_log wel
+      LEFT JOIN performed_sets ps
+        ON ps.workout_session_id = wel.workout_session_id
+        AND ps.routine_exercise_id = wel.routine_exercise_id
+      WHERE wel.workout_session_id = $1
+      GROUP BY wel.routine_exercise_id`,
+      [sessionId],
+    )
+  ).rows;
+}
+
+/* Abre el día o recupera el que ya existiera en esa semana.
+
+   Se reutiliza la sesión aunque esté terminada: volver a un día cumplido
+   tiene que mostrar lo que se registró, no empezar de cero. Una franja de la
+   semana es una sola sesión.
+
+   Comprueba que el día pertenezca de verdad a una rutina activa del atleta:
+   el identificador llega del navegador y no puede darse por bueno. */
+export async function startWorkout(athleteId, routineDayId, weekNumber) {
+  return withTransaction(async (client) => {
+    const day = (
+      await client.query(
+        `SELECT rd.id, rd.day_type, r.weeks
+        FROM routine_days rd JOIN routines r ON r.id = rd.routine_id
+        WHERE rd.id=$1 AND r.athlete_id=$2 AND r.status='active'`,
+        [routineDayId, athleteId],
+      )
+    ).rows[0];
+    if (!day) return { error: 'forbidden' };
+    if (weekNumber > day.weeks) return { error: 'week' };
+
+    const open = (
+      await client.query(
+        `SELECT * FROM workout_sessions
+        WHERE athlete_id=$1 AND routine_day_id=$2 AND week_number=$3
+        ORDER BY started_at DESC LIMIT 1`,
+        [athleteId, routineDayId, weekNumber],
+      )
+    ).rows[0];
+
+    const session =
+      open ??
+      (
+        await client.query(
+          `INSERT INTO workout_sessions (athlete_id,routine_day_id,week_number)
+          VALUES ($1,$2,$3) RETURNING *`,
+          [athleteId, routineDayId, weekNumber],
+        )
+      ).rows[0];
+
+    /* Un día libre no tiene ejercicios, así que queda cumplido en el mismo
+       momento en que el atleta lo marca. */
+    const progress = await refreshCompletion(client, session.id, routineDayId, false);
+    return { ...progress, logged: await loggedExercises(client, session.id) };
+  });
+}
+
+/* Guarda las series de un solo ejercicio y lo marca como terminado. */
+export async function logExercise(athleteId, sessionId, routineExerciseId, sets) {
+  return withTransaction(async (client) => {
+    const session = (
+      await client.query(
+        'SELECT id, routine_day_id FROM workout_sessions WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
+        [sessionId, athleteId],
+      )
+    ).rows[0];
+    if (!session) return { error: 'session' };
+
+    const belongs = (
+      await client.query('SELECT 1 FROM routine_exercises WHERE id=$1 AND routine_day_id=$2', [
+        routineExerciseId,
+        session.routine_day_id,
+      ])
+    ).rowCount;
+    if (!belongs) return { error: 'exercise' };
+
+    /* Volver a guardar el mismo ejercicio reemplaza sus series en lugar de
+       duplicarlas, para que corregir un dato no choque con la unicidad. */
+    await client.query(
+      'DELETE FROM performed_sets WHERE workout_session_id=$1 AND routine_exercise_id=$2',
+      [sessionId, routineExerciseId],
+    );
+    for (const item of sets) await insertSet(client, sessionId, routineExerciseId, item);
+
+    await client.query(
+      `INSERT INTO workout_exercise_log (workout_session_id,routine_exercise_id) VALUES ($1,$2)
+      ON CONFLICT (workout_session_id,routine_exercise_id) DO UPDATE SET completed_at=NOW()`,
+      [sessionId, routineExerciseId],
+    );
+
+    return refreshCompletion(client, sessionId, session.routine_day_id, false);
+  });
+}
+
+/* Deshace el marcado de un ejercicio y, si el día estaba cerrado, lo reabre. */
+export async function unlogExercise(athleteId, sessionId, routineExerciseId) {
+  return withTransaction(async (client) => {
+    const session = (
+      await client.query(
+        'SELECT id, routine_day_id FROM workout_sessions WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
+        [sessionId, athleteId],
+      )
+    ).rows[0];
+    if (!session) return { error: 'session' };
+
+    await client.query(
+      'DELETE FROM workout_exercise_log WHERE workout_session_id=$1 AND routine_exercise_id=$2',
+      [sessionId, routineExerciseId],
+    );
+    await client.query(
+      'DELETE FROM performed_sets WHERE workout_session_id=$1 AND routine_exercise_id=$2',
+      [sessionId, routineExerciseId],
+    );
+
+    return refreshCompletion(client, sessionId, session.routine_day_id, true);
+  });
+}
+
+/* Cierra el día. Sirve para registrar energía y notas, y para dar por
+   terminada una jornada aunque queden ejercicios sin marcar. */
 export async function finishWorkout(athleteId, sessionId, input) {
   return withTransaction(async (client) => {
     const session = (
       await client.query(
-        `UPDATE workout_sessions SET completed_at=NOW(), energy=$3, notes=$4
-      WHERE id=$1 AND athlete_id=$2 AND completed_at IS NULL RETURNING *`,
+        'SELECT id, routine_day_id FROM workout_sessions WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
+        [sessionId, athleteId],
+      )
+    ).rows[0];
+    if (!session) return { error: 'session' };
+
+    const sets = input.sets ?? [];
+    if (sets.length) {
+      const exerciseIds = [...new Set(sets.map((item) => item.routineExerciseId))];
+
+      /* Todos los ejercicios enviados tienen que pertenecer al día de esta
+         sesión; si alguno no pertenece, no se guarda nada. */
+      const found = (
+        await client.query(
+          'SELECT id FROM routine_exercises WHERE routine_day_id=$1 AND id = ANY($2::uuid[])',
+          [session.routine_day_id, exerciseIds],
+        )
+      ).rowCount;
+      if (found !== exerciseIds.length) return { error: 'exercise' };
+
+      for (const exerciseId of exerciseIds) {
+        await client.query(
+          'DELETE FROM performed_sets WHERE workout_session_id=$1 AND routine_exercise_id=$2',
+          [sessionId, exerciseId],
+        );
+      }
+      for (const item of sets) await insertSet(client, sessionId, item.routineExerciseId, item);
+      for (const exerciseId of exerciseIds) {
+        await client.query(
+          `INSERT INTO workout_exercise_log (workout_session_id,routine_exercise_id) VALUES ($1,$2)
+          ON CONFLICT (workout_session_id,routine_exercise_id) DO UPDATE SET completed_at=NOW()`,
+          [sessionId, exerciseId],
+        );
+      }
+    }
+
+    const updated = (
+      await client.query(
+        `UPDATE workout_sessions SET completed_at=COALESCE(completed_at, NOW()), energy=$3, notes=$4
+        WHERE id=$1 AND athlete_id=$2 RETURNING *`,
         [sessionId, athleteId, input.energy ?? null, input.notes || null],
       )
     ).rows[0];
-    if (!session) return null;
-    for (const item of input.sets) {
-      await client.query(
-        `INSERT INTO performed_sets (workout_session_id,routine_exercise_id,set_number,reps,weight,rpe,pain,notes)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [
-          sessionId,
-          item.routineExerciseId,
-          item.setNumber,
-          item.reps,
-          item.weight,
-          item.rpe ?? null,
-          item.pain ?? false,
-          item.notes || null,
-        ],
-      );
-    }
-    return session;
+
+    return { session: updated };
   });
+}
+
+/* Cumplimiento del atleta sobre una rutina, franja por franja.
+
+   Recorre todo el linaje de la rutina —las versiones archivadas por
+   modificaciones anteriores— porque cada edición crea una rutina nueva y, sin
+   esto, el progreso desaparecería cada vez que el entrenador ajusta el plan. */
+export async function routineProgress(routineId, athleteId) {
+  return (
+    await pool.query(
+      `WITH lineage AS (
+        SELECT r.id FROM routines r
+        WHERE COALESCE(r.origin_routine_id, r.id) =
+          (SELECT COALESCE(origin_routine_id, id) FROM routines WHERE id=$1)
+      )
+      SELECT ws.week_number, rd.day_order, ws.started_at, ws.completed_at,
+        (SELECT COUNT(*)::int FROM workout_exercise_log wel WHERE wel.workout_session_id=ws.id)
+          AS completed_exercises,
+        (SELECT COUNT(*)::int FROM routine_exercises re WHERE re.routine_day_id=rd.id)
+          AS total_exercises
+      FROM workout_sessions ws JOIN routine_days rd ON rd.id=ws.routine_day_id
+      WHERE rd.routine_id IN (SELECT id FROM lineage) AND ws.athlete_id=$2
+      ORDER BY ws.week_number, rd.day_order, ws.started_at`,
+      [routineId, athleteId],
+    )
+  ).rows;
 }
 
 export async function workoutHistory(athleteId) {

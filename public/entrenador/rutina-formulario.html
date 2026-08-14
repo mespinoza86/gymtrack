@@ -20,7 +20,7 @@
       <header class="page-header">
         <div>
           <h1 id="page-title">Nueva rutina</h1>
-          <p class="muted" id="page-description">Crea una rutina inicial de un día; puedes agregar los ejercicios que necesites.</p>
+          <p class="muted" id="page-description">Arma la semana completa y elige cuánto tiempo se repite.</p>
         </div>
         <div class="top-actions">
           <a class="btn secondary" href="rutinas.html">Volver</a>
@@ -29,38 +29,49 @@
 
       <div id="message" hidden></div>
 
-      <form id="routine" class="card">
-        <div class="form-row">
-          <div class="field">
-            <label for="name">Nombre</label>
-            <input id="name" name="name" required>
+      <form id="routine">
+        <section class="card">
+          <h2>Datos del plan</h2>
+          <div class="form-row">
+            <div class="field">
+              <label for="name">Nombre</label>
+              <input id="name" name="name" required>
+            </div>
+            <div class="field">
+              <label for="athlete">Atleta</label>
+              <select id="athlete" name="athleteId" required></select>
+            </div>
           </div>
           <div class="field">
-            <label for="athlete">Atleta</label>
-            <select id="athlete" name="athleteId" required></select>
+            <label for="description">Descripción</label>
+            <textarea id="description" name="description"></textarea>
           </div>
-        </div>
-        <div class="field">
-          <label for="description">Descripción</label>
-          <textarea id="description" name="description"></textarea>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label for="startDate">Fecha inicial</label>
-            <input id="startDate" name="startDate" type="date">
+          <div class="form-row">
+            <div class="field">
+              <label for="startDate">Fecha inicial</label>
+              <input id="startDate" name="startDate" type="date">
+            </div>
+            <div class="field">
+              <label for="weeks">Duración</label>
+              <div class="chip-group" id="weeks-options" role="group" aria-label="Duración del plan"></div>
+              <input id="weeks" name="weeks" type="number" min="1" max="52" value="1" hidden>
+              <small id="weeks-hint">La misma semana se repite durante todo el plan.</small>
+            </div>
           </div>
-          <div class="field">
-            <label for="dayName">Nombre del día</label>
-            <input id="dayName" name="dayName" value="Día 1" required>
-          </div>
-        </div>
+        </section>
 
-        <h3>Ejercicios</h3>
-        <div id="exercise-rows" class="list"></div>
+        <section class="card mt">
+          <h2>La semana</h2>
+          <p class="muted">Elige un día para editarlo. Los días libres no necesitan ejercicios.</p>
+
+          <div class="day-tabs" id="day-tabs" role="tablist" aria-label="Días de la semana"></div>
+
+          <div id="day-editor"></div>
+        </section>
 
         <div class="actions mt">
-          <button class="btn secondary" type="button" id="add">Agregar ejercicio</button>
           <button class="btn" type="submit" id="submit-button">Guardar y activar</button>
+          <a class="btn secondary" href="rutinas.html">Cancelar</a>
         </div>
       </form>
     </main>
@@ -68,27 +79,27 @@
 
   <template id="row-template">
     <div class="list-item exercise-row">
-      <div class="form-row">
-        <div class="field">
-          <label>Ejercicio</label>
-          <select data-name="exerciseId" required></select>
-        </div>
+      <div class="exercise-row-head">
+        <strong class="exercise-row-title">Ejercicio</strong>
+        <button type="button" class="icon-btn danger remove" aria-label="Quitar ejercicio" title="Quitar ejercicio"></button>
+      </div>
+      <div class="field">
+        <select data-name="exerciseId" aria-label="Ejercicio" required></select>
+      </div>
+      <div class="form-row compact">
         <div class="field">
           <label>Series</label>
-          <input data-name="sets" type="number" min="1" value="3" required>
+          <input data-name="sets" type="number" min="1" max="20" value="3" required>
         </div>
-      </div>
-      <div class="form-row">
         <div class="field">
-          <label>Repeticiones</label>
+          <label>Reps</label>
           <input data-name="reps" value="8-12" required>
         </div>
         <div class="field">
-          <label>Descanso (segundos)</label>
-          <input data-name="restSeconds" type="number" min="0" value="90">
+          <label>Descanso (s)</label>
+          <input data-name="restSeconds" type="number" min="0" max="3600" value="90">
         </div>
       </div>
-      <button type="button" class="btn danger small remove">Quitar ejercicio</button>
     </div>
   </template>
 

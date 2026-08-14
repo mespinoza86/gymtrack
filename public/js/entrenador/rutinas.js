@@ -12,6 +12,14 @@ const list = document.querySelector('#routines');
 const detail = document.querySelector('#detail');
 const message = document.querySelector('#message');
 
+/* Duración del plan en palabras. Cuatro semanas se leen mejor como un mes. */
+function durationLabel(weeks) {
+  const total = weeks || 1;
+  if (total === 1) return '1 semana';
+  if (total === 4) return '4 semanas (1 mes)';
+  return `${total} semanas`;
+}
+
 /* ---------- Resumen de la lista ---------- */
 
 function renderRoutineCard(routine) {
@@ -22,7 +30,10 @@ function renderRoutineCard(routine) {
 
   return `
     <article class="card">
-      <span class="badge">${escapeHtml(routine.status)}</span>
+      <div class="actions">
+        <span class="badge">${escapeHtml(routine.status)}</span>
+        <span class="badge neutral">${durationLabel(routine.weeks)}</span>
+      </div>
       <h2>${escapeHtml(routine.name)}</h2>
       <p>${escapeHtml(routine.description || 'Sin descripción')}</p>
       <p><small>${destinatario}</small></p>
@@ -48,14 +59,27 @@ function renderExercise(exercise) {
           </div>`;
 }
 
+/* Etiqueta del día: libre, copia de otro día, o nada si es normal. */
+function dayBadge(day) {
+  if (day.day_type === 'rest') return '<span class="badge neutral">Día libre</span>';
+  if (day.day_type === 'optional_rest')
+    return '<span class="badge neutral">Día libre opcional</span>';
+  if (day.mirrors_day_order != null)
+    return `<span class="badge">Igual al Día ${day.mirrors_day_order}</span>`;
+  return '';
+}
+
 function renderDay(day) {
   const notas = day.notes ? `<p>${escapeHtml(day.notes)}</p>` : '';
+  const contenido = day.exercises.length
+    ? `<div class="list">${day.exercises.map(renderExercise).join('')}</div>`
+    : '';
 
   return `
       <section class="routine-day">
-        <h3>${escapeHtml(day.name)}</h3>
+        <h3>Día ${day.day_order} · ${escapeHtml(day.name)} ${dayBadge(day)}</h3>
         ${notas}
-        <div class="list">${day.exercises.map(renderExercise).join('')}</div>
+        ${contenido}
       </section>`;
 }
 
@@ -64,7 +88,10 @@ function renderRoutineDetail(routine) {
     <article class="card">
       <header class="page-header">
         <div>
-          <span class="badge">${escapeHtml(routine.status)}</span>
+          <div class="actions">
+            <span class="badge">${escapeHtml(routine.status)}</span>
+            <span class="badge neutral">${durationLabel(routine.weeks)}</span>
+          </div>
           <h2>${escapeHtml(routine.name)}</h2>
           <p>${escapeHtml(routine.description || 'Sin descripción')}</p>
         </div>

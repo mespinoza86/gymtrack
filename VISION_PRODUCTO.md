@@ -1129,3 +1129,246 @@ Se recomendó seguir, en este orden, con la cadena de pendientes ya registrada e
 6. Prueba de humo completa del despliegue público y ampliación de pruebas automatizadas (solo existe una prueba en todo el proyecto).
 
 Se sugirió comenzar por el punto 1 por ser el único que no depende de tocar Neon ni Render. Queda pendiente la decisión del usuario sobre por dónde continuar exactamente.
+
+### Rutinas semanales, días libres, duración y seguimiento de cumplimiento
+
+El usuario revisó la aplicación, confirmó que el rediseño se ve bien y planteó el siguiente bloque de trabajo. Su objeción concreta es que el entrenador tiene que armar las rutinas día por día. Lo solicitado es:
+
+1. Que la rutina se construya **por semana completa**, mostrando Día 1 a Día 7 en una sola pantalla.
+2. Que cada día pueda marcarse como **día de entrenamiento, día libre o día libre opcional**.
+3. Que el entrenador pueda indicar que **un día es igual a otro** (por ejemplo, el Día 4 igual al Día 1); se copia todo el contenido y el atleta ve la aclaración entre paréntesis, `Día 4 (igual al Día 1)`.
+4. Que el entrenador decida **la duración del plan**: una semana, seis semanas, un mes, etc.
+5. Que el atleta **vaya marcando cada ejercicio como completado** mientras entrena y que, al terminar todos los ejercicios de un día, ese día quede marcado como completado.
+6. Que el entrenador **vea qué días completó cada atleta**.
+7. Que todo ello tenga una **interfaz gráfica moderna al estilo Android**.
+
+#### Diagnóstico del código actual
+
+Antes de proponer nada se leyeron el esquema SQL, `src/repositories/routines.repository.js`, `src/services/routines.service.js`, `src/routes/routines.routes.js`, `public/js/entrenador/rutina-formulario.js`, `public/js/entrenador/rutinas.js`, `public/js/atleta/rutinas.js` y `public/js/entrenador/atletas.js`. Se encontró lo siguiente:
+
+- La API **ya acepta varios días** por rutina, pero el formulario del entrenador solo construye uno y, al editar, únicamente lee `routine.days[0]`. La limitación es de interfaz, no de backend.
+- **No existe** ningún concepto de semana, duración, tipo de día ni día espejo. `routine_days` solo tiene `name`, `day_order` y `notes`.
+- El registro del entrenamiento es **todo o nada**: el atleta completa las series de todos los ejercicios y nada se guarda hasta pulsar `Finalizar entrenamiento`. No hay forma de marcar un ejercicio a la vez. Este es el cambio estructural más importante del bloque.
+- El entrenador **no tiene ninguna visibilidad** del cumplimiento: la pantalla de atletas solo muestra el último peso y la fecha de la última medición.
+
+#### Propuesta presentada
+
+**Base de datos.** Una migración nueva `004_rutinas_semanales.sql`, compatible hacia atrás (las rutinas existentes quedan como plan de una semana con su día actual como Día 1):
+
+- `routines`: columna `weeks` (1 a 52). `end_date` pasa a calcularse a partir de `start_date` y `weeks`.
+- `routine_days`: columna `day_type` con valores `training`, `rest` y `optional_rest`, y columna `mirrors_day_order` para conservar la etiqueta del día espejo.
+- `workout_sessions`: columna `week_number`, imprescindible para distinguir `Semana 2 · Día 3` de `Semana 1 · Día 3`.
+- Tabla nueva `workout_exercise_log`, con una fila por ejercicio terminado dentro de una sesión. Es la pieza que hace posible marcar el avance ejercicio por ejercicio.
+
+**Backend.** Se sustituye el guardado final por guardado incremental: un endpoint nuevo cierra un solo ejercicio, guardando sus series y registrándolo como hecho. Cuando queda marcado el último ejercicio del día, **el servidor cierra el día automáticamente**, sin depender de que el atleta pulse un botón final. Se añade `GET /api/routines/:id/progress` para que el entrenador obtenga la cuadrícula de semanas por días.
+
+Se decidió **corregir dentro de este mismo trabajo el hallazgo menor pendiente desde el 12 de agosto**: `startWorkout` y `finishWorkout` no comprueban que el día ni los ejercicios enviados pertenezcan a una rutina asignada al atleta. Como ambas funciones se reescriben completas para el modelo semanal, la corrección no tiene coste adicional y cierra el punto 5 de la lista de pendientes.
+
+**Interfaz.** Se construye con los tokens de diseño ya existentes y sin librerías externas, porque la política de seguridad de contenido solo autoriza scripts propios. Para el entrenador, una tira horizontal de siete chips de día al estilo de las pestañas de Material Design, con el día seleccionado editándose debajo, un punto indicador cuando el día tiene ejercicios y un icono de luna cuando es día libre; la duración se elige con un control segmentado. Para el atleta, un selector de semana y una fila de siete círculos con anillo de progreso que se rellenan con una marca de verificación al completarse, y tarjetas de ejercicio con casilla de completado más una barra de avance. Para el entrenador, un mapa de calor de semanas por días y un resumen del tipo `Semana 2 · 3 de 5 días` en la lista de atletas.
+
+#### Decisiones tomadas por el usuario
+
+Se le plantearon tres decisiones con sus alternativas y eligió las tres opciones recomendadas:
+
+1. **Duración:** el entrenador arma **una sola semana y esa plantilla se repite** el número de semanas indicado. El cumplimiento se registra por separado en cada semana. Se descartó por ahora permitir contenido distinto en cada semana (progresión planificada), que multiplicaría la complejidad del constructor; puede añadirse más adelante sobre esta misma base.
+2. **Días espejo:** se **copia el contenido y se mantiene sincronizado durante la edición**. Mientras el entrenador modifica el Día 1, el Día 4 se actualiza solo en el formulario; al guardar, cada día queda con sus propias filas en la base de datos. Así el historial de cada día es independiente y modificar la rutina más adelante nunca corrompe entrenamientos ya registrados. Se descartaron el enlace permanente (mezclaría el historial de ambos días) y la copia única sin sincronización (obligaría a repetir cada cambio a mano).
+3. **Ritmo de trabajo:** se avanza **por fases con revisión al final de cada una**: fase 1 base de datos y API, fase 2 constructor semanal del entrenador, fase 3 pantalla del atleta con marcado de ejercicios, fase 4 vista de progreso del entrenador.
+
+El usuario confirmó y se comenzó la fase 1.
+
+#### Fase 1 terminada: base de datos y API
+
+**Comprobación previa de los datos.** Antes de escribir la migración se inspeccionó la base local. Se encontró que existen **dos pares de sesiones duplicadas** (mismo atleta y mismo día de rutina). Eso descartó añadir una restricción `UNIQUE` por franja semanal: para satisfacerla habría que inventar números de semana en filas históricas, lo que corrompería datos reales. Se resolvió permitiendo varias sesiones por franja y agregando el estado en la consulta. Además resultó ser el modelo correcto y no un apaño, porque repetir un día dentro de la semana es legítimo.
+
+También se descubrió que **las cuentas demo `entrenador@demo.local` y `atleta@demo.local` ya no existen** en la base local; el usuario trabaja con dos cuentas propias (`marcoespinoza56@gmail.com` como entrenador y `mespinoza1986@gmail.com` como atleta). Las credenciales demo que documenta `README.md` ya no sirven en este equipo. No es un fallo, pero conviene tenerlo presente al probar.
+
+**Migración `004_rutinas_semanales.sql`.** Aplicada correctamente en la base local. Contiene:
+
+- Tipo `routine_day_type` con los valores `training`, `rest` y `optional_rest`.
+- `routines.weeks`, la duración del plan, entre 1 y 52 semanas.
+- `routines.origin_routine_id`, el linaje de la rutina, con relleno inicial de las filas existentes apuntando a sí mismas.
+- `routine_days.day_type` y `routine_days.mirrors_day_order`, más restricciones que obligan a que `day_order` sea una franja del 1 al 7 y que un día no se repita a sí mismo.
+- `workout_sessions.week_number`.
+- Tabla `workout_exercise_log`, una fila por ejercicio terminado dentro de una sesión.
+- Relleno de `workout_exercise_log` a partir de las series ya registradas, para que el historial anterior se lea con las mismas reglas que el nuevo. Se crearon 10 filas de ejercicios históricos.
+
+**Por qué se añadió el linaje.** Modificar una rutina archiva la versión anterior y crea una nueva, para no romper los entrenamientos ya registrados. Sin un enlace entre versiones, el progreso del atleta desaparecería de la vista cada vez que el entrenador ajustase el plan, lo cual sería inaceptable en un plan de seis semanas. `origin_routine_id` conserva esa relación y la consulta de progreso recorre todo el linaje. Limitación conocida: la rutina que el usuario ya tenía archivada antes de esta migración no puede enlazarse con su versión activa, porque esa relación nunca se guardó en ningún sitio y no es reconstruible con seguridad. Solo afecta a ese par preexistente; a partir de ahora el linaje se registra correctamente.
+
+**Cambios en el backend.**
+
+- `src/repositories/routines.repository.js`: `insertRoutine` acepta duración, tipo de día y día espejo, deriva `end_date` de la fecha de inicio y la duración —ya no se recibe del cliente, para que no puedan quedar incoherentes— y **copia en el servidor los ejercicios de un día espejo** cuando el cliente no envía lista propia. `replaceRoutine` propaga el linaje. Se añadieron `logExercise`, `unlogExercise` y `routineProgress`, y se reescribieron `startWorkout` y `finishWorkout`.
+- `src/services/routines.service.js`: función `currentWeek`, que calcula en qué semana va el plan según su fecha de inicio sin pasarse de la duración; traducción de los errores del repositorio a respuestas HTTP; y el plegado de la cuadrícula de cumplimiento, que ante varias sesiones en la misma franja se queda con el mejor estado y el mayor avance.
+- `src/routes/routines.routes.js`: el esquema de validación admite `weeks`, `dayType` y `mirrorsDayOrder`, y con `superRefine` comprueba reglas que dependen de varios días a la vez: un día libre no puede llevar ejercicios, un día de entrenamiento necesita al menos uno salvo que repita otro, y solo se puede repetir un día anterior de la misma semana que además no sea libre.
+- `src/controllers/routines.controller.js`: puntos de entrada de las operaciones nuevas.
+
+**Endpoints nuevos:** `PUT /api/routines/workouts/:id/exercises/:exerciseId` para marcar un ejercicio terminado, `DELETE` del mismo para desmarcarlo, y `GET /api/routines/:id/progress` para la cuadrícula de cumplimiento.
+
+**Cierre automático del día.** Cuando queda marcado el último ejercicio, el servidor cierra el día solo. Al desmarcar uno, lo reabre. Marcar nunca reabre un día ya cerrado, porque el atleta pudo haberlo cerrado a propósito con menos ejercicios de los planificados. Un día libre no tiene ejercicios, así que queda cumplido en el instante en que el atleta lo marca, sin necesidad de un endpoint aparte.
+
+**Corrección de seguridad pendiente desde el 12 de agosto: resuelta.** `startWorkout` comprueba ahora que el día pertenezca a una rutina activa del atleta, y las tres operaciones de registro comprueban que cada ejercicio pertenezca al día de la sesión. Se verificó con pruebas que ambos intentos devuelven 403.
+
+**Compatibilidad con la interfaz actual.** La fase 1 no rompe el navegador: el formulario del entrenador sigue creando rutinas de un día (los valores por defecto de Zod rellenan lo nuevo) y la pantalla del atleta sigue registrando todo de una vez con `finish`, que ahora guarda las series de forma idempotente en lugar de duplicarlas.
+
+**Verificaciones ejecutadas.**
+
+- Se creó `test/weekly-routines.test.js`, la segunda prueba automatizada real del proyecto. **El total pasó de 1 prueba a 16, todas aprobadas.** Cubre: duración y fecha final derivada, los tres tipos de día, la copia del día espejo con filas propias, el rechazo de abrir un día ajeno, el rechazo de una semana fuera del plan, la reutilización de la sesión abierta, el rechazo de un ejercicio de otro día, el cierre automático al marcar el último ejercicio, el reemplazo de series al volver a guardar, la reapertura al desmarcar, el día libre cumplido al instante, la cuadrícula de cumplimiento y la conservación del progreso al modificar la rutina. Todos los datos temporales se eliminan al terminar y la limpieza se comprueba.
+- Se ejecutó además una comprobación temporal **de extremo a extremo por HTTP real** contra el servidor levantado, con cuentas registradas por la propia API y vinculadas mediante invitación. Verificó lo que la prueba de servicio no alcanza: el cableado de las rutas, los nombres de los parámetros del controlador y los valores por defecto de Zod. Los 21 controles pasaron, incluido que un entrenador ajeno recibe 404 al intentar ver el progreso de una rutina que no es suya. Las tres cuentas temporales se eliminaron al terminar.
+- Se comprobó que los datos reales existentes siguen leyéndose bien con el modelo nuevo: la rutina activa del usuario quedó como plan de una semana con su día como día de entrenamiento, y la cuadrícula de progreso responde sobre ella.
+- `node --check` sobre los cuatro módulos modificados, `npm.cmd run format:check` conforme en todo el proyecto, `git diff --check` sin errores y `/api/health` respondiendo `{"status":"ok"}` con el servidor levantado.
+
+**Pendiente de esta fase.** No hay nada que revisar visualmente todavía, porque la fase 1 no cambia ninguna pantalla; eso llega con las fases 2 y 3. Sí queda anotado que **ahora hay dos migraciones sin aplicar en Neon**: `003_exercise_status.sql`, pendiente desde el 11 de agosto, y `004_rutinas_semanales.sql`. Ninguna versión nueva debe publicarse en Render sin aplicarlas antes.
+
+#### Fase 2 terminada: constructor semanal del entrenador
+
+**Convenciones confirmadas antes de escribir nada.** Se revisaron las convenciones vigentes del frontend para que el código nuevo encajara con el resto: `icon(name, size)` devuelve una cadena de HTML y **no avisa cuando el nombre no existe**, simplemente devuelve vacío; los puntos de quiebre son 1024 px y 640 px; las pantallas dibujan con plantillas de texto y vuelven a enlazar los manejadores con `button.onclick` después de cada redibujado; y **la clase `.tab` ya está ocupada por la barra inferior de navegación**, por lo que reutilizar ese nombre habría roto el menú móvil.
+
+**Iconos nuevos.** `public/js/comun/icons.js` no tenía símbolo de sumar (`mas` son tres puntos, del menú "Más"), ni papelera, ni copia, ni calendario. Se añadieron `agregar`, `basura`, `copiar` y `calendario`, con el mismo trazo y estilo que los veinte existentes.
+
+**La pantalla.** `public/entrenador/rutina-formulario.html` se rehízo en dos tarjetas: los datos del plan, con la duración como control segmentado, y la semana, con la tira de los siete días y el editor del día seleccionado debajo. La plantilla de fila de ejercicio se conservó, con límites añadidos coherentes con los que valida el servidor.
+
+**El estado vive ahora en JavaScript.** Es la única pantalla del proyecto donde el estado no se lee del DOM, y fue una decisión obligada: como solo se dibuja el día seleccionado, los otros seis no existen en pantalla y no se podrían leer al guardar. El DOM se vuelca al estado con `captureCurrentDay()` antes de cualquier redibujado. Queda explicado en el comentario de cabecera del archivo para que no parezca una inconsistencia.
+
+**Comportamiento del constructor.**
+
+- La semana nace con el Día 1 como entrenamiento y los seis restantes como día libre, de modo que el entrenador solo marca lo que de verdad se entrena.
+- Cada ficha de la tira muestra su estado de un vistazo: número de ejercicios, `Libre`, `Libre opcional` o `Igual al Día N`. Un día de entrenamiento todavía vacío se marca en ámbar, porque el servidor rechazaría la rutina si se guardara así.
+- Los días espejo se sincronizan mientras se edita: como los ejercicios de un día espejo se resuelven desde el día que repite en el momento de dibujar, cambiar el Día 1 actualiza al instante lo que muestra el Día 4.
+- Solo se ofrecen como origen los días de entrenamiento anteriores con lista propia. Encadenar espejos complicaría la pantalla sin aportar nada.
+- Al convertir en día libre un día que otros repetían, esos días sueltan la referencia automáticamente, porque ya no habría nada que copiar.
+- La duración se elige con atajos de 1, 4, 6 y 8 semanas más una opción `Otro` que descubre un campo numérico.
+- Antes de enviar se comprueba que ningún día de entrenamiento quede sin ejercicios ni día espejo; si lo hay, se abre ese día y se explica qué falta, en vez de dejar que el servidor devuelva un error genérico.
+
+**Un fallo evitado a propósito.** El catálogo de ejercicios solo devuelve los activos. Si una rutina que se está editando usaba un ejercicio que después se desactivó, el desplegable no lo habría contenido y **al guardar se habría perdido en silencio**. El constructor añade ese ejercicio como opción marcada `no disponible` para conservarlo.
+
+**Lista y detalle del entrenador.** `public/js/entrenador/rutinas.js` muestra ahora la duración del plan como etiqueta, y en el detalle cada día aparece con su número, su nombre y una etiqueta que indica si es libre, libre opcional o copia de otro día. Cuatro semanas se escriben como `4 semanas (1 mes)`, que es como lo diría una persona.
+
+**Estilos nuevos** en `public/css/components.css`: `.day-tabs` y `.day-tab`, la tira de días que en pantalla ancha muestra las siete a la vez y en móvil se desplaza en horizontal con anclaje; `.day-tab-icon`, la pastilla circular que se rellena de color al seleccionar; y `.segmented` con `.segmented-option`, el control segmentado reutilizable. Todo con los tokens ya existentes y con estados de foco visibles.
+
+**Verificaciones ejecutadas.**
+
+- Comprobación temporal del contrato entre HTML, JavaScript y CSS: los identificadores que busca el JavaScript existen en la página, los campos por `name`, los `data-name` de la plantilla de fila, que las seis clases nuevas tengan estilo, que **no se reutilice el nombre `.tab`**, que los cuatro iconos usados existan de verdad en `icons.js`, que el HTML no traiga atributos `style` (la CSP los bloquea) y que sigan enlazadas las tres hojas y el script de tema. Los trece controles pasaron. La primera ejecución dio un falso positivo, porque la propia comprobación se detectó dentro de un comentario del CSS; se corrigió quitando los comentarios antes de la búsqueda.
+- Comprobación temporal **de ida y vuelta contra la API real**, construyendo exactamente el mismo cuerpo que arma el formulario: una semana de siete franjas con entrenamiento, día libre, día libre opcional y un día espejo. Los 18 controles pasaron, incluidos que las siete franjas vuelven con sus tipos correctos, que el día espejo copió los ejercicios en filas propias, que el detalle trae todas las claves que el formulario necesita para recargar, y que **al añadir un ejercicio al Día 1 y volver a guardar, el Día 4 que lo repite pasó también a tener tres ejercicios**. Las cuentas temporales se eliminaron al terminar.
+- `node --check` sobre los tres módulos tocados, `npm.cmd run format:check` conforme, `git diff --check` sin errores, las 16 pruebas automatizadas siguen pasando sin regresiones, y las seis páginas y recursos implicados responden 200 con el servidor levantado.
+
+**Pendiente de esta fase.** Falta la confirmación visual del usuario en el navegador: crear una rutina semanal desde cero, marcar días libres, hacer que un día repita a otro y comprobar que se sincroniza al editar el original, cambiar la duración, guardar, y volver a abrir la rutina para editarla y verificar que todo vuelve como estaba. La pantalla del atleta todavía no sabe nada de días libres ni de marcar ejercicios de a uno: eso es la fase 3.
+
+#### Repaso de la vista móvil del constructor
+
+El usuario revisó la fase 2 y señaló dos cosas. La primera, que **en el celular la pantalla no se ve bien**, aunque en portátil y tableta sí. Al preguntarle qué era lo que peor se veía marcó las cuatro opciones: la tira de los siete días, los controles redondeados, la sensación general de agobio y los campos del formulario. Es decir, un repaso móvil completo de la pantalla, no un retoque.
+
+La segunda fue preguntar si **el guardado del progreso del atleta ya estaba hecho**. Se le respondió con precisión: el backend sí (fase 1, con pruebas), pero **la pantalla del atleta no lo usa todavía**, así que como funcionalidad de producto no está entregada; sigue con el registro de todo al final. Eso es la fase 3, que el usuario pidió hacer justo después de arreglar el móvil.
+
+**Diagnóstico.** Los tres defectos tenían causa concreta en el CSS escrito en la fase 2:
+
+- La tira de días se había hecho con desplazamiento horizontal y un mínimo de 116 px por ficha, unos 860 px en total. En un teléfono de 390 px solo se veían tres días y había que arrastrar hasta el Día 7; además el texto de estado a 11 px se partía en varias líneas y dejaba las fichas desparejas. Encima el desplazamiento se recortaba contra el relleno de la tarjeta en vez de llegar al borde de la pantalla.
+- Los controles redondeados eran un control segmentado en forma de cápsula usado también para la duración, que tiene cinco opciones. En un teléfono no caben en una fila, así que se apilaban dentro de la cápsula y **una píldora con dos o tres líneas de contenido se deforma**: eso era lo de las esquinas raras.
+- La fila de ejercicio apilaba cuatro campos a ancho completo más un botón rojo de quitar, así que cada ejercicio ocupaba una pantalla entera y una rutina de cinco se volvía interminable.
+
+**Decisiones tomadas.**
+
+- **La tira ya no se desplaza.** Los siete días caben siempre en una fila, porque una semana se entiende de un vistazo o no se entiende. En móvil la ficha lleva solo el icono y `D3`; a partir de 900 px recupera `Día 3` y su línea de estado. El estado del día abierto se lee en una cabecera nueva del editor, justo debajo, así que en pantalla pequeña no se pierde información. Toda la lógica responsiva quedó en CSS, sin `matchMedia` en JavaScript, y el estado completo va además en `aria-label` para que un lector de pantalla lo oiga en cualquier tamaño.
+- **Dos controles distintos según el número de opciones.** El tipo de día (tres opciones excluyentes) sigue siendo un control segmentado, ahora con columnas iguales, texto que puede ocupar dos líneas y forma de rectángulo redondeado en móvil, que es lo que no se deforma; a partir de 640 px recupera la píldora. La duración (cinco opciones) pasó a fichas sueltas `.chip`, que se reparten en las líneas que hagan falta sin romper ninguna cápsula.
+- **La fila de ejercicio se compactó.** Cabecera con `Ejercicio 1` y un botón de icono para quitar en la esquina, en lugar del botón rojo a ancho completo; el ejercicio ocupa el ancho completo y series, repeticiones y descanso comparten la fila siguiente, que baja a dos columnas solo en pantallas muy estrechas. Las filas se renumeran al añadir y al quitar, para que no queden huecos tras borrar la del medio.
+
+**Archivos tocados:** `public/css/components.css`, `public/entrenador/rutina-formulario.html`, `public/js/entrenador/rutina-formulario.js`. No se tocó nada de `src`, ni la API, ni la base de datos.
+
+**Verificaciones ejecutadas.** La comprobación temporal del contrato HTML/JavaScript/CSS se amplió a 20 controles, todos correctos: además de lo anterior comprueba que las trece clases nuevas tengan estilo **y se usen de verdad** (un cambio de nombre a medias dejaría el control sin estilo sin dar ningún error), que la tira ya no use desplazamiento horizontal y sí reparta siete columnas, que la duración use fichas y el tipo de día siga segmentado, y que el botón de quitar tenga etiqueta accesible. Se repitió también la comprobación de ida y vuelta contra la API, con sus 18 controles en verde, para confirmar que rehacer la plantilla de fila no rompió la lectura de los datos. `npm.cmd run format:check` conforme, `git diff --check` limpio, las 16 pruebas automatizadas siguen pasando y las páginas y recursos responden 200 con el código nuevo ya servido.
+
+**Nota sobre el entorno.** Al intentar levantar un servidor para verificar apareció `EADDRINUSE`: el puerto 3000 ya estaba ocupado por el servidor del propio usuario, levantado con `npm run dev`. Como ese modo usa `node --watch`, ya tenía el código actual y las comprobaciones se ejecutaron contra él sin problema. **No se detuvo ese proceso**, para no interrumpir la revisión del usuario.
+
+**Pendiente.** Confirmación visual en un teléfono real de las tres correcciones, y después la fase 3.
+
+El usuario confirmó que la vista móvil ya le gusta y detuvo su servidor local para dejar el puerto libre. Se pasó a la fase 3.
+
+#### Fase 3 terminada: la pantalla del atleta
+
+**Un hueco del backend detectado antes de empezar.** La fase 1 permitía marcar ejercicios, pero **no había forma de recuperar lo ya marcado al volver a un día**. Peor: `startWorkout` solo reutilizaba sesiones sin terminar, así que **volver a un día ya cumplido habría creado una sesión nueva vacía** y el atleta habría visto cero de cinco después de haberlo completado, además de dejar una franja duplicada en la semana. Se corrigieron ambas cosas antes de tocar la interfaz:
+
+- `startWorkout` reutiliza ahora la sesión de la franja **esté terminada o no**. Una franja de la semana es una sola sesión.
+- Se añadió `loggedExercises()`, que devuelve qué ejercicios se dieron por terminados y con qué series, y su resultado viaja en la respuesta de `startWorkout`. Sin eso la pantalla no podría mostrar lo hecho ni recuperar los números escritos.
+
+Se añadieron dos pruebas automatizadas para ese comportamiento: que reabrir un día cumplido devuelve la misma sesión sin crear una repetida, y que se recuperan los ejercicios marcados con sus series. **El total pasó de 16 a 18 pruebas.**
+
+**Decisión de diseño: mirar un día no es empezarlo.** La pantalla solo abre sesión en el servidor cuando el atleta pulsa `Comenzar día` o `Marcar como cumplido`, o cuando la franja ya tenía una sesión de antes. Si cada día que se toca abriera sesión, navegar por la semana dejaría entrenamientos a medias en el historial y en la vista del entrenador. La cuadrícula de progreso, que ya se pide al abrir la rutina, es la que dice si una franja tiene sesión.
+
+**La pantalla.** `public/js/atleta/rutinas.js` se reescribió por completo:
+
+- Cabecera con el nombre del plan y, si dura más de una semana, un navegador `‹ Semana 2 de 6 ›`. La semana de partida es la que calcula el servidor a partir de la fecha de inicio.
+- Fila de siete **anillos de progreso**: el trazo se rellena según los ejercicios hechos, con una marca de verificación al completar, una luna en los días libres pendientes y el número del día en los demás. Igual que en el constructor, los siete caben siempre en una fila y a partir de 900 px la etiqueta pasa de `D3` a `Día 3`.
+- Al elegir un día de entrenamiento sin empezar se ve el plan en modo consulta, con instrucciones y videos, y un botón `Comenzar día`.
+- Una vez empezado, cada ejercicio es una tarjeta con sus filas de serie (repeticiones, peso y casilla de dolor) y un botón `Marcar como hecho`. Al marcarlo la tarjeta se tiñe de verde, se resume lo registrado y solo queda `Deshacer`. Arriba, una barra de avance con `3 de 5 ejercicios`.
+- Los días libres muestran su explicación y un único botón para darlos por cumplidos.
+- Al final, un bloque opcional para anotar energía y notas y cerrar el día aunque falte algún ejercicio.
+
+**Se puede marcar un ejercicio sin anotar los números.** Las filas vacías se descartan al enviar, y la API acepta una lista de series vacía. Un atleta que solo quiere ir tachando lo hecho puede hacerlo sin teclear nada.
+
+**Deshacer no borra lo escrito de la pantalla.** El servidor sí elimina las series al desmarcar —desmarcado significa no hecho—, pero la pantalla guarda aparte los últimos números tecleados y vuelve a mostrarlos en las casillas. Deshacer por error no obliga a escribirlo todo otra vez.
+
+**Restricción respetada: nada de estilos en línea.** La política de seguridad del servidor bloquea los atributos `style`, así que el avance del anillo va en atributos del SVG (`stroke-dasharray` y `stroke-dashoffset`) y la barra de progreso es un elemento `<progress>` nativo con su valor en un atributo. Es la misma razón por la que en el rediseño del 12 de agosto hubo que quitar todos los `style=`.
+
+**Archivos tocados:** `src/repositories/routines.repository.js`, `test/weekly-routines.test.js`, `public/atleta/rutinas.html`, `public/js/atleta/rutinas.js`, `public/css/components.css` y `public/js/comun/icons.js`, donde se añadieron los iconos `anterior`, `siguiente` y `deshacer`.
+
+**Verificaciones ejecutadas.**
+
+- Comprobación temporal **de todo el recorrido del atleta por HTTP real**, reproduciendo las mismas llamadas y en el mismo orden que hace la pantalla. Los 30 controles pasaron: la semana actual se calcula sola (un plan empezado hace ocho días abre en la semana 2), mirar la semana no deja entrenamientos a medias, comenzar abre la sesión en la semana correcta, marcar el último ejercicio cierra el día solo, volver al día recupera los dos ejercicios con sus series y hasta la casilla de dolor, deshacer reabre el día, el día libre se cumple al marcarlo, cerrar con energía y notas funciona aunque falte un ejercicio, **la semana 1 sigue intacta mientras se registra la 2**, el entrenador ve el mismo progreso y el entrenamiento aparece en el historial.
+- Comprobación temporal del contrato de la pantalla, 13 controles: identificadores, que **ni el HTML ni las plantillas del JavaScript generen atributos `style`**, que el anillo use atributos SVG y la barra un `<progress>`, que las 21 clases nuevas tengan estilo y se usen, que los cinco iconos existan de verdad, y que los textos que vienen del servidor se escapen antes de insertarlos.
+- Las 18 pruebas automatizadas pasan, `npm.cmd run format:check` conforme, `git diff --check` limpio y las páginas del atleta responden 200.
+
+**Pendiente de esta fase.** Confirmación visual del usuario en el navegador y en el teléfono: abrir una rutina, moverse entre semanas, comenzar un día, marcar ejercicios de a uno y ver cómo se llena el anillo, deshacer, completar un día entero y comprobar que queda con su marca, y marcar un día libre. Después queda la **fase 4**: que el entrenador vea el cumplimiento de cada atleta con el mapa de semanas por días y el resumen en la lista de atletas. Y siguen pendientes de aplicar en Neon las migraciones `003` y `004` antes de publicar en Render.
+
+### Los videos de YouTube no se reproducían dentro de la aplicación
+
+El usuario informó de que al abrir el video de un ejercicio aparecía un error y tenía que ir a YouTube directamente. Pidió que se pudiera ver dentro de la aplicación.
+
+**Diagnóstico, descartando causas una a una.**
+
+1. Se revisó la política de seguridad de contenido en `src/app.js`: `frameSrc` **sí** autoriza `youtube.com`, `youtube-nocookie.com` y `player.vimeo.com`. No era eso.
+2. Se consultó qué enlace había guardado de verdad en la base local. Es `https://www.youtube.com/watch?v=WDIpL0pjun0`, del ejercicio `Lagartijas`; una dirección estándar que el conversor sí reconocía. Tampoco era un problema de formato.
+3. Se comprobó contra YouTube que el video existe y es público (oEmbed respondió 200) y, sobre todo, que **`"playableInEmbed":true`**: su autor no ha desactivado la incrustación. Eso descartaba la única causa que no habríamos podido arreglar.
+4. Se inspeccionaron las cabeceras reales que devuelve el servidor y apareció la causa: **Helmet envía `Referrer-Policy: no-referrer` para toda la aplicación**. Sin cabecera `Referer`, el reproductor de YouTube no puede comprobar desde qué sitio se le está incrustando y responde con un error en lugar del video.
+
+**Corrección aplicada.** Se añadió `referrerpolicy="strict-origin-when-cross-origin"` **al propio marco del video**. El atributo del elemento manda sobre la cabecera del documento, así que la política estricta se conserva para toda la aplicación y solo se relaja en esa petición concreta, y únicamente hasta el origen: YouTube recibe `http://localhost:3000` o la dirección pública, nunca la ruta de la página que estaba viendo el atleta. Se descartó a propósito cambiar la cabecera global, que habría debilitado la protección de todo el sitio para arreglar un caso.
+
+**Mejoras aprovechando el cambio.**
+
+- La conversión de enlaces se sacó a un módulo propio, `public/js/comun/video.js`, sin nada del navegador. Antes vivía dentro de la pantalla del atleta y por eso **no se podía probar**: importarla arrastraba `navigation.js` y el DOM.
+- Se ampliaron los formatos admitidos. Antes solo se reconocían `watch?v=` y `youtu.be`; ahora también **`/shorts/`**, `/live/`, `/embed/` y los enlaces de `youtu.be` con el parámetro `?si=` que añade el botón Compartir. Los Shorts son hoy el formato más habitual y hasta ahora el atleta no veía nada al pulsar `Ver video`.
+- Se validan el esquema y la forma del identificador, de modo que un `javascript:` o un `data:` nunca puedan acabar en el `src` de un marco.
+- Bajo el reproductor hay ahora un enlace permanente `¿No se ve? Ábrelo en YouTube`. Si el autor de un video concreto sí tiene desactivada la incrustación, eso no se puede arreglar desde aquí, y conviene que la salida esté siempre a la vista.
+
+**Verificaciones.** Se creó `test/video-embed.test.js` con cuatro pruebas que cubren las nueve formas de enlace de YouTube, Vimeo, lo que debe rechazarse y los esquemas peligrosos. **El total pasó de 18 a 22 pruebas.** `npm.cmd run format:check` conforme, la comprobación del contrato de la pantalla del atleta sigue en verde, y se confirmó sobre el servidor levantado que `/js/comun/video.js` se sirve y que el marco sale con el `referrerpolicy` correcto.
+
+**Pendiente.** Confirmación del usuario de que el video ya se reproduce dentro de la aplicación. Si aún fallara, el siguiente paso sería comprobar en las herramientas del navegador si el error lo da YouTube dentro del marco o si el marco ni siquiera carga.
+
+El usuario confirmó que **el video ya se reproduce dentro de la aplicación**. El problema queda cerrado.
+
+## Estado al cerrar el 14 de agosto de 2026
+
+Se revisó el estado real del repositorio para dejarlo anotado con exactitud. Durante el día el usuario confirmó por su cuenta el commit `441805d` (`Arreglando los files para que sea legible todo`), que corresponde al trabajo del 13 de agosto: tema oscuro predeterminado y legibilidad de todo el JavaScript. Aquella anotación de esta bitácora que decía que el último commit era `701ec18` quedó desfasada por ese motivo.
+
+**Todo el trabajo del 14 de agosto está sin confirmar en Git**: 16 archivos, de los cuales cuatro son nuevos y ni siquiera están rastreados (`database/migrations/004_rutinas_semanales.sql`, `public/js/comun/video.js`, `test/video-embed.test.js` y `test/weekly-routines.test.js`). Es el pendiente más urgente, porque incluye la migración y las dos baterías de pruebas nuevas.
+
+### Lo que sí quedó terminado hoy
+
+- Fase 1: modelo semanal en base de datos y API, con guardado del cumplimiento ejercicio por ejercicio y cierre automático del día. Incluyó la corrección del fallo de autorización pendiente desde el 12 de agosto.
+- Fase 2: constructor semanal del entrenador, con los siete días, días libres, días espejo sincronizados y duración del plan.
+- Repaso completo de la vista móvil del constructor.
+- Fase 3: pantalla del atleta con anillos de progreso, marcado ejercicio por ejercicio y navegación entre semanas.
+- Reproducción de videos de YouTube dentro de la aplicación.
+- Las pruebas automatizadas pasaron de **1 a 22** en un solo día.
+
+### Pendientes, en orden recomendado
+
+**1. Confirmar en Git el trabajo del día.** Nada de las fases 1 a 3 está respaldado todavía.
+
+**2. Fase 4, la única parte del bloque acordado que falta.** El entrenador todavía **no ve** el cumplimiento de sus atletas: hay que construir el mapa de semanas por días y el resumen del tipo `Semana 2 · 3 de 5 días` en la lista de atletas. El endpoint `GET /api/routines/:id/progress` ya existe, está probado y devuelve exactamente esos datos; falta solo la interfaz.
+
+**3. Cadena de despliegue, bloqueada desde el 11 de agosto.** Aplicar en Neon las migraciones `003_exercise_status.sql` y `004_rutinas_semanales.sql`, en ese orden, antes de publicar nada en Render. Después, prueba de humo completa del recorrido en producción.
+
+**4. Ampliar las pruebas automatizadas.** Las 22 actuales cubren cambio de contraseña, rutinas semanales y enlaces de video. Sigue sin haber cobertura de autenticación y roles, invitaciones y vinculaciones, aislamiento de los datos entre atletas, y mensajería.
+
+**5. Endurecimiento antes de datos reales.** No hay token CSRF explícito: la protección se apoya solo en `sameSite=lax`. Faltan también recuperación de contraseña y verificación de correo.
+
+**6. Funciones del MVP que siguen sin existir.** Las fotografías de progreso tienen su tabla pero no hay almacenamiento de archivos ni interfaz. La tabla de notificaciones **no está conectada a ningún evento** del código de `src`. No existe la ficha individual del atleta (`atleta-detalle.html`), que sí estaba en el diseño original, ni un formulario para que el entrenador registre medidas. Tampoco hay duplicar ni archivar rutinas desde la interfaz.
+
+**7. Cabos sueltos menores.** `multer` sigue declarado en `package.json` **sin usarse en ningún archivo de `src`**. Persiste la advertencia de `pg`/`pg-connection-string` sobre los modos SSL, que conviene resolver haciendo explícito `sslmode=verify-full` antes de actualizar a `pg` 9. El `README.md` documenta unas cuentas demo (`entrenador@demo.local` y `atleta@demo.local`) que **ya no existen** en la base local, así que sus credenciales confunden más que ayudan. Y la rutina que quedó archivada antes de la migración `004` no puede enlazarse con su versión activa, porque esa relación nunca se guardó; solo afecta a ese par preexistente.
