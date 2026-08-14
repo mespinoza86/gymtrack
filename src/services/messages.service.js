@@ -15,8 +15,11 @@ export async function send(id, userId, body) {
   await access(id, userId);
   const message = await repo.send(id, userId, body);
   const recipient = await repo.recipient(id, userId);
+  /* Un aviso pendiente por conversación, no uno por mensaje: el enlace lleva la
+     conversación y sirve de clave estable. Al leerlo, el siguiente mensaje
+     vuelve a avisar. */
   if (recipient)
-    await notifications.create({
+    await notifications.createUnlessUnread({
       userId: recipient,
       type: 'message_received',
       title: 'Nuevo mensaje',

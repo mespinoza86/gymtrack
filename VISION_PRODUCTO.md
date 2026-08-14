@@ -1681,3 +1681,48 @@ La prueba semanal comprueba ahora en PostgreSQL que asignar una rutina avisa al 
 **Pendiente de revisión visual.** Probar con las dos cuentas reales: provocar un evento —el mensaje es el más rápido—, confirmar el contador en escritorio y móvil, abrir la bandeja, entrar al destino, marcar una y luego todas, y revisar temas claro/oscuro. El contador se actualiza al cargar una página y al leer desde la bandeja; no se transmite en vivo mientras se permanece en otra pantalla. Las notificaciones en tiempo real pueden añadirse después si se considera necesario.
 
 La siguiente y última fase del bloque acordado es **fotografías de progreso**, que requiere decidir el proveedor de almacenamiento privado antes de escribir la carga de archivos.
+
+### Revisión del código de las fases 1 a 3 y endurecimiento de las notificaciones
+
+El usuario pidió una revisión del estado del proyecto y una opinión. Antes de opinar se leyó el código real y no solo esta bitácora, y se ejecutaron las pruebas puras.
+
+**Corrección de un error propio.** Al recuperar el contexto al inicio de la sesión se afirmó que el conflicto de mediciones se había resuelto guardando una fila por cada autor, atleta y entrenador. **Eso era falso y no se había verificado.** El código de `addMeasurement` usa `ON CONFLICT (athlete_id, measured_at) DO UPDATE` con `COALESCE` campo por campo: existe **una sola fila por atleta y fecha**, y el segundo guardado completa los huecos sin borrar lo anterior, que es exactamente lo que registraba el punto de reanudación. Queda anotado el error para que no vuelva a darse por bueno un resumen sin comprobarlo contra el código.
+
+**Fortalezas confirmadas al revisar.** El módulo de notificaciones respeta la separación en capas de los cinco módulos anteriores; todas las lecturas y escrituras filtran por el `user_id` de la sesión; `markRead` combina identificador y propietario en la misma condición; `read-all` está declarada antes de `/:id/read`; y el socket de chat solo une salas, sin ninguna vía paralela para enviar mensajes que se saltara la creación del aviso. `rutina-copia.js` como módulo puro permitió verificar la duplicación **sin escribir en Neon**.
+
+#### Hallazgo principal: un aviso fallido rompía la operación que lo provocaba
+
+En los servicios de seguimiento, mensajes, vínculos y rutinas, la creación del aviso se esperaba con `await` sin protección **después** de que el dato principal ya estaba guardado. Un fallo del `INSERT` de la notificación convertía en error 500 una operación que sí había terminado bien.
+
+El caso más grave era la invitación: `acceptInvitation` consume un código de un solo uso; si el aviso posterior fallaba, el atleta quedaba vinculado pero recibía un error, y al reintentar obtenía `La invitación no existe, venció o ya fue utilizada`. En mensajería el efecto era un mensaje guardado que el usuario reenviaba por creer que había fallado.
+
+**Corrección.** La frontera se puso en `src/services/notifications.service.js`. Las tres funciones de creación se envuelven en `sideEffect`, que registra el fallo en consola y devuelve nulo en lugar de propagarlo. Los puntos de llamada no cambiaron, de modo que ningún evento futuro puede olvidarse de aplicar la protección. En cambio `list`, `unreadCount`, `markRead` y `markAllRead` **siguen lanzando**, porque ahí la bandeja no es un efecto secundario sino la operación que el usuario pidió.
+
+#### Segundo hallazgo: los mensajes inundaban la bandeja
+
+`message_received` usaba `create`, así que una conversación de treinta mensajes generaba treinta avisos. El enlace ya contenía la conversación y servía de clave estable, pero `createOnce` no valía: al comprobar si existe *cualquiera*, habría avisado una sola vez y nunca más de esa conversación.
+
+Se añadió `createUnlessUnread` al repositorio, que agrupa **solo mientras el aviso siga pendiente** gracias a `AND read_at IS NULL` en el `NOT EXISTS`. Queda un aviso por conversación sin leer y, en cuanto el usuario lo lee, el siguiente mensaje vuelve a avisar. Se conservaron las conversiones explícitas de tipo que resolvieron el error `42P08` durante la fase 3.
+
+#### Verificaciones
+
+- Antes de escribir se confirmó el destino de `DATABASE_URL`: `ep-falling-heart-ay0in6eg-pooler.c-5.us-east-2.aws.neon.tech`, base `gymtrack`. **Sigue siendo producción.**
+- `test/notifications.test.js` pasó de 5 a 7 pruebas: se añadieron el agrupado mientras está sin leer con reanudación después de leer, y que una creación fallida devuelve nulo sin lanzar. La segunda provoca a propósito una violación de clave foránea, por lo que la salida muestra una línea `[notificaciones] create falló…`: forma parte de lo comprobado.
+- `test/weekly-routines.test.js` volvió a pasar con sus 19 pruebas, confirmando que los avisos de rutina asignada y entrenamiento completado siguen disparándose.
+- Las pruebas puras de contrato, copia de rutinas y video siguen en verde; `format:check` conforme y `node --check` sin errores en los cuatro archivos tocados.
+- Una consulta final confirmó `usuarios_temporales_restantes = 0` y `notificaciones_de_prueba_restantes = 0`.
+
+**Archivos modificados:** `src/repositories/notifications.repository.js`, `src/services/notifications.service.js`, `src/services/messages.service.js` y `test/notifications.test.js`. No hubo migración ni cambios de interfaz.
+
+#### Pendientes registrados durante la revisión, no corregidos
+
+1. **`createOnce` y `createUnlessUnread` tienen una carrera.** `INSERT ... WHERE NOT EXISTS` no es atómico y no hay índice único detrás, así que dos peticiones simultáneas pueden insertar las dos. Consecuencia: un aviso duplicado ocasional. La solución limpia sería un índice único parcial más `ON CONFLICT DO NOTHING`.
+2. **Una medición no se puede corregir a «sin dato».** El `COALESCE` del upsert conserva el valor anterior cuando se envía vacío, de modo que un valor mal tecleado no puede dejarse en blanco. Además `recorded_by` guarda quién tocó la fila por última vez, no quién midió cada campo: una medición del atleta puede acabar atribuida al entrenador.
+3. **Cada mensaje cuesta dos consultas extra** (`recipient` más el aviso) en la ruta más frecuente de la aplicación.
+4. Siguen pendientes el token CSRF explícito, `multer` declarado sin usarse, y la advertencia de `pg` sobre `sslmode=verify-full`.
+
+#### Sugerencia sobre esta bitácora
+
+El documento supera las 1.700 líneas y crece de forma lineal, así que recuperar el contexto obliga a leerlo casi entero. Se propuso añadir arriba una sección **«Estado actual»** reescrita en cada sesión con la verdad vigente, dejando debajo el historial cronológico intacto. Queda pendiente de decisión del usuario.
+
+**Pendiente inmediato.** Confirmación visual de las fases 1, 2 y 3 en el navegador, y publicar en Render, que no recibe nada desde `1c91e86`.

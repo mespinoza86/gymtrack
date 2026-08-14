@@ -83,4 +83,44 @@ test('notificaciones privadas y estados de lectura', async (t) => {
     const rows = (await notifications.list(owner.id)).filter((item) => item.type === 'test_once');
     assert.equal(rows.length, 1);
   });
+
+  await t.test('un aviso repetible se agrupa mientras siga sin leer', async () => {
+    const event = {
+      userId: owner.id,
+      type: 'test_group',
+      title: 'Mensaje nuevo',
+      link: '/conversacion/abc',
+    };
+    const count = async () =>
+      (await notifications.list(owner.id)).filter((item) => item.type === 'test_group').length;
+
+    await notifications.createUnlessUnread(event);
+    await notifications.createUnlessUnread(event);
+    assert.equal(await count(), 1, 'mientras esté pendiente no debe repetirse');
+
+    /* Al leerla, el evento siguiente sí debe volver a avisar: si no, el usuario
+       dejaría de enterarse de los mensajes posteriores de esa conversación. */
+    await notifications.markAllRead(owner.id);
+    await notifications.createUnlessUnread(event);
+    assert.equal(await count(), 2, 'después de leerla debe volver a avisar');
+  });
+
+  await t.test('un aviso que falla no rompe la operación que lo provocó', async () => {
+    /* Un propietario inexistente viola la clave foránea, que es la forma más
+       fiel de simular un fallo real del INSERT. La llamada debe devolver nulo
+       en vez de propagar el error. La consola mostrará una línea de aviso:
+       forma parte de lo que se está comprobando. */
+    const result = await notifications.create({
+      userId: '00000000-0000-0000-0000-000000000000',
+      type: 'test_fallo',
+      title: 'No debería guardarse',
+      link: '/evento/fallido',
+    });
+
+    assert.equal(result, null, 'un fallo al avisar debe devolver nulo, no lanzar');
+    const { rows } = await pool.query('SELECT 1 FROM notifications WHERE type = $1', [
+      'test_fallo',
+    ]);
+    assert.equal(rows.length, 0, 'no debe quedar ninguna fila del intento fallido');
+  });
 });
