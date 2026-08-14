@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import * as links from '../repositories/links.repository.js';
 import { HttpError } from '../utils/http-error.js';
+import * as notifications from './notifications.service.js';
 
 export async function createInvitation(trainerId) {
   const code = crypto.randomBytes(5).toString('hex').toUpperCase();
@@ -15,6 +16,13 @@ export const listTrainers = links.listTrainers;
 export async function acceptInvitation(code, athleteId) {
   const invitation = await links.acceptInvitation(code.toUpperCase(), athleteId);
   if (!invitation) throw new HttpError(404, 'La invitación no existe, venció o ya fue utilizada');
+  await notifications.create({
+    userId: invitation.trainer_id,
+    type: 'invitation_accepted',
+    title: 'Invitación aceptada',
+    body: 'Un atleta aceptó tu invitación y ya aparece en tu lista.',
+    link: '/entrenador/atletas.html',
+  });
   return invitation;
 }
 

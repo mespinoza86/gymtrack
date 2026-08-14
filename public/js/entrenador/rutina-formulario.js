@@ -13,13 +13,18 @@ import { initNavigation } from '../comun/navigation.js';
 import { api, formData, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
 import { icon } from '../comun/icons.js';
+import { routineCopyDraft } from '../comun/rutina-copia.js';
 
 await initNavigation();
 
 const DAYS_PER_WEEK = 7;
 const WEEK_PRESETS = [1, 4, 6, 8];
 
-const routineId = new URLSearchParams(location.search).get('id');
+const parameters = new URLSearchParams(location.search);
+const routineId = parameters.get('id');
+/* `id` siempre gana si alguien construye una URL con ambos parámetros: una
+   pantalla nunca puede modificar y duplicar al mismo tiempo. */
+const sourceRoutineId = routineId ? null : parameters.get('duplicar');
 const form = document.querySelector('#routine');
 const message = document.querySelector('#message');
 const tabs = document.querySelector('#day-tabs');
@@ -91,6 +96,10 @@ function readRow(row) {
   const value = (name) => row.querySelector(`[data-name="${name}"]`).value;
   const exerciseId = value('exerciseId');
   return {
+    /* Estos parámetros todavía no tienen controles visibles en el formulario,
+       pero pueden existir en rutinas antiguas. Se conservan para que modificar
+       o duplicar no los borre silenciosamente. */
+    ...(row.routineMetadata || {}),
     exerciseId,
     name: exercises.find((item) => item.id === exerciseId)?.name ?? '',
     sets: Number(value('sets')),
@@ -211,6 +220,13 @@ function renumberRows() {
 function addRow(values = {}) {
   const node = document.querySelector('#row-template').content.cloneNode(true);
   const row = node.querySelector('.exercise-row');
+
+  row.routineMetadata = {
+    targetWeight: values.targetWeight ?? null,
+    rir: values.rir ?? null,
+    tempo: values.tempo || '',
+    notes: values.notes || '',
+  };
 
   row.querySelector('[data-name="exerciseId"]').innerHTML = exerciseOptions(
     values.exerciseId,
@@ -466,6 +482,28 @@ weeksInput.oninput = () => {
 
 /* ---------- Carga inicial ---------- */
 
+/* Escribe un borrador en el formulario y en el estado semanal. Se comparte
+   entre edición y duplicación; la diferencia es cómo se construye el borrador
+   y qué método HTTP se usa después al guardar. */
+function loadDraft(draft) {
+  form.elements.name.value = draft.name;
+  form.elements.athleteId.value = draft.athleteId;
+  form.elements.description.value = draft.description;
+  form.elements.startDate.value = draft.startDate;
+  weeksInput.value = draft.weeks;
+  week = draft.week;
+
+  const firstTraining = week.findIndex((day) => day.dayType === 'training');
+  selectedDay = firstTraining >= 0 ? firstTraining + 1 : 1;
+}
+
+function editableDraft(routine) {
+  const draft = routineCopyDraft(routine);
+  draft.name = routine.name;
+  draft.startDate = routine.start_date ? routine.start_date.slice(0, 10) : '';
+  return draft;
+}
+
 if (routineId) {
   document.title = 'Modificar rutina';
   document.querySelector('#page-title').textContent = 'Modificar rutina';
@@ -475,32 +513,22 @@ if (routineId) {
 
   try {
     const { routine } = await api(`/api/routines/${routineId}`);
-    form.elements.name.value = routine.name;
-    form.elements.athleteId.value = routine.athlete_id || '';
-    form.elements.description.value = routine.description || '';
-    form.elements.startDate.value = routine.start_date ? routine.start_date.slice(0, 10) : '';
-    weeksInput.value = routine.weeks || 1;
+    loadDraft(editableDraft(routine));
+  } catch (error) {
+    showMessage(message, error.message, 'error');
+    form.hidden = true;
+  }
+} else if (sourceRoutineId) {
+  document.title = 'Duplicar rutina';
+  document.querySelector('#page-title').textContent = 'Duplicar rutina';
+  document.querySelector('#page-description').textContent =
+    'Revisa la copia, cambia lo que necesites y guárdala como un plan independiente.';
+  document.querySelector('#submit-button').textContent = 'Crear copia';
+  document.querySelector('#copy-notice').hidden = false;
 
-    /* Las franjas que la rutina no define se quedan como día libre. */
-    for (const day of routine.days) {
-      week[day.day_order - 1] = {
-        name: day.name,
-        dayType: day.day_type || 'training',
-        mirrorsDayOrder: day.mirrors_day_order ?? null,
-        notes: day.notes || '',
-        exercises: (day.exercises || []).map((item) => ({
-          exerciseId: item.exerciseId,
-          name: item.name,
-          sets: item.sets,
-          reps: item.reps,
-          restSeconds: item.restSeconds ?? 90,
-        })),
-      };
-    }
-
-    /* Se abre en el primer día que sí entrena, no en uno libre. */
-    const firstTraining = week.findIndex((day) => day.dayType === 'training');
-    selectedDay = firstTraining >= 0 ? firstTraining + 1 : 1;
+  try {
+    const { routine } = await api(`/api/routines/${sourceRoutineId}`);
+    loadDraft(routineCopyDraft(routine));
   } catch (error) {
     showMessage(message, error.message, 'error');
     form.hidden = true;
@@ -555,7 +583,17 @@ form.onsubmit = async (event) => {
               exerciseId: item.exerciseId,
               sets: Number(item.sets),
               reps: item.reps,
-              restSeconds: Number(item.restSeconds),
+              targetWeight:
+                item.targetWeight === null || item.targetWeight === undefined
+                  ? null
+                  : Number(item.targetWeight),
+              restSeconds:
+                item.restSeconds === null || item.restSeconds === undefined
+                  ? null
+                  : Number(item.restSeconds),
+              rir: item.rir === null || item.rir === undefined ? null : Number(item.rir),
+              tempo: item.tempo || '',
+              notes: item.notes || '',
             }))
           : [],
     })),

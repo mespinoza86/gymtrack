@@ -81,6 +81,12 @@ test('rutina semanal con días libres, días espejo y cumplimiento por ejercicio
     /* Seis semanas desde el 3 de agosto terminan el 13 de septiembre. */
     assert.equal(rows[0].fin, '2026-09-13');
     assert.equal(creada.origin_routine_id, creada.id, 'una rutina nueva es su propio origen');
+
+    const assigned = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM notifications WHERE user_id=$1 AND type='routine_assigned'",
+      [athlete.id],
+    );
+    assert.equal(assigned.rows[0].n, 1, 'asignar la rutina avisa una sola vez al atleta');
   });
 
   const rutina = await routines.getRoutine(creada.id, comoEntrenador);
@@ -149,6 +155,12 @@ test('rutina semanal con días libres, días espejo y cumplimiento por ejercicio
     const total = await routines.logExercise(athlete.id, sesion.id, dia1.exercises[1].id, series);
     assert.equal(total.completedExercises, 2);
     assert.ok(total.session.completed_at, 'al marcar el último el día queda cumplido');
+
+    const notices = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM notifications WHERE user_id=$1 AND type='workout_completed'",
+      [trainer.id],
+    );
+    assert.equal(notices.rows[0].n, 1, 'el cierre automático avisa al entrenador');
   });
 
   await t.test('volver a guardar un ejercicio reemplaza sus series', async () => {
@@ -162,6 +174,12 @@ test('rutina semanal con días libres, días espejo y cumplimiento por ejercicio
       [sesion.id, dia1.exercises[0].id],
     );
     assert.equal(rows[0].n, 2);
+
+    const notices = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM notifications WHERE user_id=$1 AND type='workout_completed'",
+      [trainer.id],
+    );
+    assert.equal(notices.rows[0].n, 1, 'volver a guardar no duplica el aviso');
   });
 
   await t.test('desmarcar un ejercicio reabre el día', async () => {
@@ -179,6 +197,11 @@ test('rutina semanal con días libres, días espejo y cumplimiento por ejercicio
     const libre = await routines.startWorkout(athlete.id, dia2.id, 1);
     assert.equal(libre.totalExercises, 0);
     assert.ok(libre.session.completed_at, 'un día sin ejercicios se cumple al instante');
+    const notices = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM notifications WHERE user_id=$1 AND type='workout_completed'",
+      [trainer.id],
+    );
+    assert.equal(notices.rows[0].n, 1, 'un descanso cumplido no se anuncia como entrenamiento');
   });
 
   /* Volver a un día ya cumplido no puede empezar de cero: el atleta perdería

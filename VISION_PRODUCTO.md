@@ -1508,3 +1508,176 @@ El usuario pidió que `VISION_PRODUCTO.md` siga siendo la fuente de contexto del
 ### Regla operativa confirmada para esta sesión
 
 Antes de ejecutar migraciones, semillas, pruebas o comprobaciones que escriban datos se verificará el `hostname` de `DATABASE_URL`, sin mostrar credenciales. La configuración conocida apunta a Neon y las pruebas automatizadas crean y eliminan datos temporales allí, por lo que no se ejecutarán de manera rutinaria sin tener presente ese impacto.
+
+### Fase 2 iniciada: duplicar rutinas
+
+El usuario confirmó el inicio de la segunda fase y pidió mantener una documentación especialmente detallada. Antes de modificar el código se verificó que el árbol de trabajo estaba limpio y que el bloque anterior quedó guardado en Git con el commit `d3c8412` (`agregando medidas y cuenta de atleta para entrenador`).
+
+#### Alcance y comportamiento acordados
+
+La duplicación será **asistida**, no inmediata: desde la lista o el detalle de rutinas, `Duplicar` abrirá el constructor semanal con los datos de la rutina de origen ya cargados. El entrenador podrá revisar y cambiar nombre, atleta, descripción, fecha, duración, días y ejercicios antes de guardar. Solo al enviar el formulario se creará la rutina nueva.
+
+La copia tendrá estas reglas:
+
+- Se conservarán el atleta seleccionado, la descripción, la duración, los tipos de día, los días espejo, las notas y todos los parámetros de cada ejercicio.
+- El nombre recibirá el sufijo ` (copia)` y respetará el máximo de 140 caracteres.
+- La fecha inicial será la fecha actual, no la fecha de la rutina original, porque una copia es un plan nuevo y heredar una fecha antigua podría hacer que naciera avanzada o vencida.
+- El atleta permanecerá seleccionado para acelerar el caso común, pero podrá cambiarse antes de guardar. El modelo actual admite varias rutinas activas para un mismo atleta y la pantalla del atleta ya muestra una lista de rutinas, no una única rutina exclusiva.
+- La rutina original no se modificará ni archivará.
+- La copia no heredará sesiones, ejercicios marcados, series realizadas ni cumplimiento.
+- La copia tendrá un linaje nuevo: no se enviará por el flujo `PUT` de modificación, sino por el `POST /api/routines` de creación. Así `origin_routine_id` apuntará a la copia misma y el progreso futuro de ambas rutinas quedará separado.
+- Los permisos existentes se reutilizarán: `GET /api/routines/:id` solo entrega la rutina si pertenece al entrenador autenticado, y la creación vuelve a comprobar que el atleta elegido conserve un vínculo activo.
+
+#### Hallazgo durante la inspección
+
+La API de detalle devuelve parámetros avanzados de cada ejercicio —`targetWeight`, `rir`, `tempo` y `notes`—, pero el constructor actual solo conserva `exerciseId`, series, repeticiones y descanso al cargar y volver a guardar. Por tanto, modificar una rutina creada con esos campos desde otra fuente podría borrarlos silenciosamente. La fase 2 corregirá también este defecto: aunque esos valores todavía no tengan controles visibles en el constructor, viajarán en el estado de cada fila y volverán a enviarse sin alteración. Esto es necesario para que «duplicar» signifique una copia fiel y también hace más segura la edición existente.
+
+#### Estrategia de implementación y verificación
+
+La conversión de una rutina recibida por la API a un borrador nuevo se aislará en un módulo puro, sin dependencias del navegador. Eso permitirá probar con `node:test`, sin servidor y **sin escribir en Neon**, que se conservan todos los campos, que la fecha y el nombre se ajustan, que se completan las siete franjas de la semana y que modificar el borrador no altera el objeto original. Después se comprobarán el contrato HTML/JavaScript, el formato y el diff. Las pruebas de integración que escriben en la base solo se ejecutarán si resultan imprescindibles y después de confirmar el destino de `DATABASE_URL`.
+
+#### Fase 2 terminada: implementación
+
+**Accesos a la acción.** Cada tarjeta de `Rutinas` tiene ahora un botón secundario `Duplicar` con el icono de copia. El mismo acceso aparece en la cabecera del detalle desplegado, junto a `Modificar rutina`. Ambos navegan a `rutina-formulario.html?duplicar=<id>`. Se mantuvo `Modificar` con `?id=<id>` como una operación distinta y, si una URL incluyera accidentalmente los dos parámetros, el modo de edición tiene prioridad para impedir que una pantalla intente modificar y duplicar a la vez.
+
+**Tres modos en un solo constructor.** `rutina-formulario.js` distingue ahora entre crear desde cero, modificar y duplicar. En duplicación cambia el título de la pestaña y de la página a `Duplicar rutina`, explica que se revise la copia y cambia el botón final a `Crear copia`. También descubre un aviso que aclara antes de guardar que se está preparando una rutina nueva y que la original y su progreso no cambiarán. Si la rutina de origen no existe o no pertenece al usuario, el error de la API se muestra y el formulario se oculta, igual que ya ocurría al editar.
+
+**Borrador independiente.** Se creó `public/js/comun/rutina-copia.js`, un módulo puro que transforma la respuesta de detalle en el estado que consume el constructor. El módulo:
+
+- crea objetos nuevos para la semana, los días y los ejercicios, sin compartir referencias con la respuesta original;
+- completa como días libres las franjas ausentes hasta llegar a siete;
+- conserva atleta, descripción, duración, nombres, tipos de día, espejos y notas;
+- conserva de cada ejercicio el catálogo, nombre, series, repeticiones, peso objetivo, descanso, RIR, tempo y notas;
+- reemplaza la fecha original por la fecha local del día en que se prepara la copia;
+- añade una sola vez el sufijo ` (copia)` y recorta únicamente la base del nombre cuando sea necesario para respetar el límite de 140 caracteres;
+- omite deliberadamente identificadores de rutina, filas y linaje.
+
+**Guardado y separación del progreso.** El parámetro `duplicar` nunca llena `routineId`, que es la única variable que decide entre `PUT` y `POST`. Por eso `Crear copia` usa `POST /api/routines`: el repositorio crea una fila nueva, le asigna su propio `origin_routine_id` y crea filas nuevas para días y ejercicios. Las sesiones y series realizadas no forman parte del cuerpo del formulario y no se copian. No fue necesario añadir endpoint, migración ni consulta SQL.
+
+**Corrección preventiva en la edición existente.** Los campos avanzados descubiertos durante la inspección se guardan ahora como metadatos de la fila del ejercicio mientras esta vive en el DOM. `captureCurrentDay()` los incorpora de nuevo al estado y el cuerpo enviado conserva `targetWeight`, `rir`, `tempo` y `notes`; `restSeconds` también conserva correctamente `null` en vez de convertirlo en cero. Los controles visibles siguen siendo los mismos, pero modificar o duplicar ya no destruye información que todavía no se puede editar desde esta pantalla.
+
+**Archivos modificados o creados.** Se modificaron `public/js/entrenador/rutinas.js`, `public/js/entrenador/rutina-formulario.js` y `public/entrenador/rutina-formulario.html`. Se crearon `public/js/comun/rutina-copia.js` y `test/routine-copy.test.js`. Este documento se actualizó antes, durante y al terminar la fase.
+
+#### Verificaciones de la fase 2
+
+- `test/routine-copy.test.js` contiene tres pruebas que pasan: copia fiel e independiente, reglas del nombre y contrato entre la lista, el constructor y el HTML.
+- La prueba principal verifica expresamente atleta, descripción, fecha local nueva, seis semanas, siete franjas, descanso, día espejo y todos los parámetros avanzados del ejercicio. Después modifica el borrador y comprueba que el objeto de origen no cambió.
+- La prueba del nombre comprueba tanto el máximo de 140 caracteres como que duplicar una copia no acumule ` (copia) (copia)`.
+- La prueba de contrato comprueba que existan los dos enlaces `?duplicar=`, que el constructor lea ese parámetro, que cargue el módulo de transformación, que el guardado sea `POST` al no existir `routineId` y que el aviso exista inicialmente oculto en el HTML.
+- `node --check` aprobó los tres módulos JavaScript implicados.
+- Prettier revisó todo el JavaScript de `src`, `public/js`, `database` y `test` sin modificar archivos ajenos a esta fase; `git diff --check` quedó limpio.
+- No se ejecutó la suite completa ni se crearon datos de prueba: las pruebas nuevas son unitarias y de contrato, y por tanto **no escribieron en Neon**. El comportamiento de creación independiente sobre PostgreSQL ya está cubierto por `weekly-routines.test.js`, cuya prueba existente afirma que una rutina nueva es su propio origen.
+
+**Pendiente de revisión visual.** Como entrenador: abrir `Rutinas`, pulsar `Duplicar` desde una tarjeta y también desde un detalle, comprobar que aparece el aviso y que nombre, atleta, duración y semana están precargados; verificar que la fecha sea la actual; cambiar al menos el nombre o el atleta; guardar; y confirmar en la lista que aparecen tanto la original como la copia. No se debe registrar progreso de la copia para esta revisión.
+
+La siguiente fase del bloque, después de esa confirmación visual, es **notificaciones**.
+
+### Fase 3 iniciada: notificaciones dentro de la aplicación
+
+El usuario autorizó implementar la fase completa. El trabajo local de duplicación de rutinas todavía no estaba confirmado en Git al comenzar, por lo que se preserva sin mezclar ni revertir ninguno de sus archivos.
+
+#### Estado encontrado y alcance elegido
+
+La tabla `notifications` existe desde `001_initial_schema.sql` y ya tiene propietario, tipo, título, cuerpo, enlace, fecha de lectura y fecha de creación, además de un índice parcial para las pendientes. Sin embargo, ningún módulo de `src` escribía o consultaba la tabla y no existían rutas, página ni acceso de navegación. No hace falta una migración.
+
+Esta fase conectará cinco recorridos que ya existen y tienen destinatario inequívoco:
+
+1. Rutina nueva o actualizada: aviso al atleta.
+2. Día de entrenamiento completado, incluso por cierre automático al marcar el último ejercicio: aviso al entrenador.
+3. Medición registrada por el entrenador: aviso al atleta. Una medición escrita por el propio atleta no genera un aviso para sí mismo.
+4. Check-in enviado: aviso al entrenador; retroalimentación registrada: aviso al atleta.
+5. Mensaje nuevo: aviso a la otra persona de la conversación.
+6. Invitación aceptada: aviso al entrenador que la creó.
+
+La bandeja será compartida por ambos roles y permitirá listar, abrir el destino, marcar una como leída y marcar todas como leídas. La navegación mostrará el total pendiente: directamente junto a `Notificaciones` en el menú lateral y, en móvil, sobre el acceso `Más`, porque la bandeja no reemplazará ninguno de los cuatro accesos principales de la barra inferior.
+
+#### Reglas técnicas y de seguridad
+
+- Todas las lecturas y actualizaciones filtrarán por el `user_id` de la sesión; enviar el identificador de una notificación ajena no permitirá verla ni marcarla.
+- La ruta `read-all` se declarará antes de `/:id/read` para que Express no confunda una palabra fija con un identificador.
+- Los enlaces generados serán rutas internas fijas. La interfaz solo navegará a valores que empiecen por `/`, aunque la tabla contenga un dato incorrecto.
+- La finalización de entrenamientos llevará una marca `newlyCompleted`: solo la transición de pendiente a completado crea aviso. Volver a guardar un día ya cerrado no duplicará notificaciones.
+- La creación seguirá en los servicios de cada dominio, después de sus comprobaciones de permisos. El repositorio de notificaciones solo contendrá SQL parametrizado.
+- El contador no impedirá cargar la navegación si falla: en ese caso se mostrará el menú normalmente sin número, mientras que la bandeja sí enseñará el error correspondiente.
+
+#### Fase 3 terminada: backend y API
+
+Se creó el módulo completo de notificaciones siguiendo la separación habitual:
+
+```text
+routes/notifications.routes.js
+        ↓
+controllers/notifications.controller.js
+        ↓
+services/notifications.service.js
+        ↓
+repositories/notifications.repository.js
+        ↓
+PostgreSQL
+```
+
+El repositorio implementa creación, creación idempotente, listado de las cien más recientes, contador pendiente, lectura individual y lectura masiva. La creación idempotente usa usuario, tipo y enlace como clave estable; se reserva para eventos que pueden corregirse o repetirse sin representar una novedad distinta.
+
+**Endpoints nuevos:**
+
+- `GET /api/notifications`: últimas cien notificaciones del usuario de la sesión.
+- `GET /api/notifications/unread-count`: cantidad pendiente para la navegación.
+- `PUT /api/notifications/read-all`: marca todas las propias como leídas y devuelve cuántas cambió.
+- `PUT /api/notifications/:id/read`: marca una propia; el parámetro se valida como UUID y una notificación ajena responde como no encontrada.
+
+Las rutas se montaron en `src/app.js`. No se añadió ninguna migración porque Neon y el esquema local ya tienen la tabla y el índice necesarios desde la migración inicial.
+
+#### Eventos conectados
+
+**Rutinas.** `createRoutine` avisa al atleta cuando se crea una rutina activa asignada. `updateRoutine` avisa sobre la nueva versión. Una plantilla sin atleta o una rutina no activa no genera aviso. Duplicar una rutina pasa por la creación normal, por lo que su nuevo atleta recibe el mismo evento cuando se guarda la copia.
+
+**Entrenamientos.** `refreshCompletion` devuelve ahora `newlyCompleted`, calculado comparando el estado anterior y posterior de la sesión. `finishWorkout` aplica la misma regla. El servicio consulta el entrenador, atleta, rutina, día y tipo de día solo cuando ocurre esa transición. Los descansos se pueden marcar como cumplidos pero **no generan** `Entrenamiento completado`. El aviso usa un enlace con el atleta y la sesión como clave estable; desmarcar y volver a completar la misma sesión no crea otro. Esto cubre tanto el cierre automático al marcar el último ejercicio como el cierre manual.
+
+**Mediciones.** Solo una medición escrita por el entrenador avisa al atleta; el atleta no recibe un aviso de su propia acción. Como una ficha del mismo día puede actualizarse varias veces, se utiliza creación idempotente con el identificador estable de la medición.
+
+**Check-ins.** Enviar el formulario avisa al entrenador con el nombre del atleta. Registrar o corregir la retroalimentación avisa una sola vez al atleta por identificador de check-in.
+
+**Invitaciones.** Al aceptar una invitación se avisa al entrenador que la creó y se enlaza a su lista de atletas.
+
+**Mensajes.** Después de validar la pertenencia a la conversación y guardar el mensaje, se consulta quién es la otra persona y se crea su aviso. El enlace incluye la conversación. `public/js/compartido/mensajes.js` lee ese parámetro después de cargar la lista y abre el hilo; el servidor vuelve a comprobar el permiso, por lo que alterar la URL no concede acceso.
+
+#### Bandeja e indicador visual
+
+Se crearon `public/compartido/notificaciones.html` y `public/js/compartido/notificaciones.js`. La bandeja distingue visualmente pendientes y leídas, muestra fecha relativa, permite marcar una, abrir su destino o marcar todas. Los títulos y textos pasan por escapado HTML. Antes de navegar, el enlace se acepta únicamente si empieza por `/`; un valor externo o mal formado almacenado en la tabla no se abre.
+
+Se añadió el icono propio `notificaciones` al catálogo SVG. Ambos menús de rol incluyen la bandeja. `initNavigation()` pide el contador una vez al construir la interfaz; en escritorio lo muestra junto al enlace exacto y en móvil sobre `Más`. La bandeja actualiza o elimina ambos indicadores al leer elementos, sin recargar la página. Si falla únicamente la petición del contador, la navegación sigue construyéndose.
+
+Los estilos nuevos cubren tarjeta, estado pendiente, icono, cabecera, contador y adaptación por debajo de 520 px. La barra inferior usa posición relativa para anclar el contador sin mover el icono ni el texto.
+
+#### Pruebas, fallo encontrado y corrección
+
+Se añadieron `test/notifications.test.js` y `test/notification-contract.test.js`, y se amplió `test/weekly-routines.test.js`.
+
+La prueba de base crea exactamente dos usuarios temporales y comprueba:
+
+- listado y contador aislados por propietario;
+- imposibilidad de marcar una notificación ajena;
+- lectura individual y masiva sin alterar al otro usuario;
+- creación idempotente para una misma clave de evento;
+- borrado final de los dos usuarios, con las notificaciones eliminadas por cascada.
+
+La prueba de contrato comprueba el montaje de la API, el orden de rutas, los identificadores de la página, el filtro de enlaces internos, el contador de navegación y la presencia de los ocho tipos conectados: `routine_assigned`, `routine_updated`, `workout_completed`, `measurement_added`, `checkin_submitted`, `checkin_reviewed`, `invitation_accepted` y `message_received`.
+
+La prueba semanal comprueba ahora en PostgreSQL que asignar una rutina avisa al atleta, completar el último ejercicio avisa al entrenador, volver a guardar no duplica el aviso y completar un descanso no suma otro.
+
+**Fallo encontrado durante la verificación.** La primera versión de `createOnce` reutilizaba los mismos parámetros en un `INSERT ... SELECT` y en `NOT EXISTS`. PostgreSQL dedujo `text` en una posición y `varchar` en otra, devolviendo `42P08: inconsistent types deduced for parameter`. Eso hizo fallar la prueba nueva y, como consecuencia, las comprobaciones semanales que esperaban el aviso. Se corrigió declarando de forma explícita `uuid`, `varchar(50)`, `varchar(160)` y `text` en el `SELECT`. Al repetir únicamente las dos pruebas afectadas pasaron 24/24, incluido deshacer y volver a completar.
+
+#### Verificación final de la fase 3
+
+- Antes de escribir datos se confirmó exclusivamente el hostname: `ep-falling-heart-ay0in6eg-pooler.c-5.us-east-2.aws.neon.tech`.
+- La suite completa terminó con **40 pruebas aprobadas, cero fallos**.
+- `npm.cmd run format:check` confirmó todo el JavaScript.
+- `git diff --check` no encontró espacios o marcadores incorrectos.
+- Una consulta final buscó los prefijos temporales de contraseña, medición, rutina y notificación: `usuarios_temporales_restantes=0`.
+- Persiste la advertencia ya conocida de `pg` sobre hacer explícito `sslmode=verify-full` antes de la próxima versión mayor; no fue causada por esta fase.
+
+**Archivos de esta fase:** nuevos `src/repositories/notifications.repository.js`, `src/services/notifications.service.js`, `src/controllers/notifications.controller.js`, `src/routes/notifications.routes.js`, `public/compartido/notificaciones.html`, `public/js/compartido/notificaciones.js`, `test/notifications.test.js` y `test/notification-contract.test.js`; modificados `src/app.js`, los servicios de rutinas, seguimiento, vínculos y mensajes, los repositorios de rutinas y mensajes, `public/js/comun/navigation.js`, `public/js/comun/icons.js`, `public/js/compartido/mensajes.js`, `public/css/layout.css`, `public/css/components.css` y `test/weekly-routines.test.js`.
+
+**Pendiente de revisión visual.** Probar con las dos cuentas reales: provocar un evento —el mensaje es el más rápido—, confirmar el contador en escritorio y móvil, abrir la bandeja, entrar al destino, marcar una y luego todas, y revisar temas claro/oscuro. El contador se actualiza al cargar una página y al leer desde la bandeja; no se transmite en vivo mientras se permanece en otra pantalla. Las notificaciones en tiempo real pueden añadirse después si se considera necesario.
+
+La siguiente y última fase del bloque acordado es **fotografías de progreso**, que requiere decidir el proveedor de almacenamiento privado antes de escribir la carga de archivos.

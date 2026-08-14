@@ -1,6 +1,7 @@
 import * as repository from '../repositories/routines.repository.js';
 import { activeLink } from '../repositories/links.repository.js';
 import { HttpError } from '../utils/http-error.js';
+import * as notifications from './notifications.service.js';
 
 export const listExercises = repository.listExercises;
 export const createExercise = repository.createExercise;
@@ -28,13 +29,30 @@ export async function deleteExercise(id, trainerId) {
 export async function createRoutine(trainerId, input) {
   if (input.athleteId && !(await activeLink(trainerId, input.athleteId)))
     throw new HttpError(403, 'El atleta no está vinculado contigo');
-  return repository.createRoutine(trainerId, input);
+  const routine = await repository.createRoutine(trainerId, input);
+  if (routine.athlete_id && routine.status === 'active')
+    await notifications.create({
+      userId: routine.athlete_id,
+      type: 'routine_assigned',
+      title: 'Nueva rutina asignada',
+      body: `Ya tienes disponible “${routine.name}”.`,
+      link: '/atleta/rutinas.html',
+    });
+  return routine;
 }
 export async function updateRoutine(id, trainerId, input) {
   if (input.athleteId && !(await activeLink(trainerId, input.athleteId)))
     throw new HttpError(403, 'El atleta no está vinculado contigo');
   const routine = await repository.replaceRoutine(id, trainerId, input);
   if (!routine) throw new HttpError(404, 'Rutina no encontrada');
+  if (routine.athlete_id && routine.status === 'active')
+    await notifications.create({
+      userId: routine.athlete_id,
+      type: 'routine_updated',
+      title: 'Rutina actualizada',
+      body: `Tu entrenador actualizó “${routine.name}”.`,
+      link: '/atleta/rutinas.html',
+    });
   return routine;
 }
 /* Semana en la que va el plan hoy, contando desde su fecha de inicio.
@@ -66,17 +84,41 @@ function assertWorkout(result) {
   return result;
 }
 
+async function notifyCompletion(result) {
+  if (!result.newlyCompleted) return result;
+  const context = await repository.workoutNotificationContext(result.session.id);
+  /* Los descansos se pueden marcar como cumplidos, pero no son un
+     entrenamiento y no deben generar este aviso. */
+  if (context?.day_type === 'training')
+    await notifications.createOnce({
+      userId: context.trainer_id,
+      type: 'workout_completed',
+      title: 'Entrenamiento completado',
+      body: `${context.athlete_first_name} ${context.athlete_last_name} completó ${context.day_name} de “${context.routine_name}”.`,
+      /* La sesión vuelve único el evento y la ficha ignora ese parámetro
+         adicional. Así deshacer y completar otra vez no repite el aviso. */
+      link: `/entrenador/atleta-detalle.html?id=${context.athlete_id}&workout=${result.session.id}`,
+    });
+  return result;
+}
+
 export async function startWorkout(athleteId, routineDayId, weekNumber) {
-  return assertWorkout(await repository.startWorkout(athleteId, routineDayId, weekNumber));
+  return notifyCompletion(
+    assertWorkout(await repository.startWorkout(athleteId, routineDayId, weekNumber)),
+  );
 }
 export async function logExercise(athleteId, sessionId, routineExerciseId, sets) {
-  return assertWorkout(await repository.logExercise(athleteId, sessionId, routineExerciseId, sets));
+  return notifyCompletion(
+    assertWorkout(await repository.logExercise(athleteId, sessionId, routineExerciseId, sets)),
+  );
 }
 export async function unlogExercise(athleteId, sessionId, routineExerciseId) {
   return assertWorkout(await repository.unlogExercise(athleteId, sessionId, routineExerciseId));
 }
 export async function finishWorkout(athleteId, sessionId, input) {
-  return assertWorkout(await repository.finishWorkout(athleteId, sessionId, input));
+  return notifyCompletion(
+    assertWorkout(await repository.finishWorkout(athleteId, sessionId, input)),
+  );
 }
 
 /* Resumen para el entrenador: cómo va esta semana cada uno de sus atletas.

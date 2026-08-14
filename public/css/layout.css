@@ -85,6 +85,24 @@
   color: var(--brand);
 }
 
+.nav-count,
+.tab-count {
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--pill);
+  padding-inline: 5px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.nav-count { margin-left: auto; }
+.tab-count { position: absolute; top: 5px; right: calc(50% - 22px); }
+
 .sidebar-footer {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-4);
@@ -203,6 +221,7 @@ body.drawer-open { overflow: hidden; }
 }
 
 .tab {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;

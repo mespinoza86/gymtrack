@@ -2,6 +2,7 @@ import { currentUser, logout } from './auth.js';
 import { escapeHtml } from './dom.js';
 import { icon } from './icons.js';
 import { themeButton } from './theme.js';
+import { api } from './api.js';
 
 /* Cada entrada es [etiqueta, dirección, icono]. Las marcadas en
    `tabs` son las que aparecen en la barra inferior del celular;
@@ -17,6 +18,7 @@ const menus = {
       ['Nutrición', '/entrenador/nutricion.html', 'nutricion'],
       ['Check-ins', '/entrenador/checkins.html', 'checkins'],
       ['Mensajes', '/compartido/mensajes.html', 'mensajes'],
+      ['Notificaciones', '/compartido/notificaciones.html', 'notificaciones'],
       ['Perfil', '/compartido/perfil.html', 'perfil'],
     ],
     tabs: [
@@ -35,6 +37,7 @@ const menus = {
       ['Progreso', '/atleta/progreso.html', 'progreso'],
       ['Check-in', '/atleta/checkin.html', 'checkins'],
       ['Mensajes', '/compartido/mensajes.html', 'mensajes'],
+      ['Notificaciones', '/compartido/notificaciones.html', 'notificaciones'],
       ['Perfil', '/compartido/perfil.html', 'perfil'],
     ],
     tabs: [
@@ -53,19 +56,24 @@ function initials(user) {
   return `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || '·';
 }
 
-function navLinks(links) {
+function countMarkup(count, className = 'nav-count') {
+  if (!count) return '';
+  return `<span class="${className}" aria-label="${count} notificaciones pendientes">${count > 99 ? '99+' : count}</span>`;
+}
+
+function navLinks(links, unread) {
   return links
     .map(
       ([label, url, name]) =>
-        `<a class="nav-link${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span></a>`,
+        `<a class="nav-link${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span>${url === '/compartido/notificaciones.html' ? countMarkup(unread) : ''}</a>`,
     )
     .join('');
 }
 
-function fillSidebar(sidebar, user, menu) {
+function fillSidebar(sidebar, user, menu, unread) {
   sidebar.innerHTML = `
     <div class="logo">${brand}</div>
-    <nav aria-label="Secciones">${navLinks(menu.links)}</nav>
+    <nav aria-label="Secciones">${navLinks(menu.links, unread)}</nav>
     <div class="sidebar-footer">
       <div class="user-chip">
         <span class="avatar">${escapeHtml(initials(user))}</span>
@@ -108,7 +116,7 @@ function buildTopbar(openDrawer) {
 
 /* Barra inferior con los accesos frecuentes más un botón que abre
    el menú completo, para que ninguna sección quede inalcanzable. */
-function buildBottomNav(menu, openDrawer) {
+function buildBottomNav(menu, openDrawer, unread) {
   const nav = document.createElement('nav');
   nav.className = 'bottom-nav';
   nav.setAttribute('aria-label', 'Accesos rápidos');
@@ -122,7 +130,7 @@ function buildBottomNav(menu, openDrawer) {
     )
     .join('');
 
-  nav.innerHTML = `<ul>${tabs}<li><button type="button" class="tab" id="more-tab">${icon('mas')}<span>Más</span></button></li></ul>`;
+  nav.innerHTML = `<ul>${tabs}<li><button type="button" class="tab" id="more-tab">${icon('mas')}<span>Más</span>${countMarkup(unread, 'tab-count')}</button></li></ul>`;
   nav.querySelector('#more-tab').onclick = openDrawer;
   return nav;
 }
@@ -145,7 +153,13 @@ export async function initNavigation() {
   if (!sidebar) return user;
 
   const menu = menus[user.role];
-  fillSidebar(sidebar, user, menu);
+  let unread = 0;
+  try {
+    unread = (await api('/api/notifications/unread-count')).unread;
+  } catch {
+    /* El menú sigue siendo usable aunque el contador no responda. */
+  }
+  fillSidebar(sidebar, user, menu, unread);
 
   const shell = sidebar.parentElement;
   const scrim = document.createElement('div');
@@ -167,7 +181,7 @@ export async function initNavigation() {
   });
 
   shell.prepend(buildTopbar(openDrawer));
-  shell.append(scrim, buildBottomNav(menu, openDrawer));
+  shell.append(scrim, buildBottomNav(menu, openDrawer, unread));
 
   /* Si la ventana crece hasta el tamaño de escritorio, el menú
      deslizante deja de tener sentido y debe cerrarse. */

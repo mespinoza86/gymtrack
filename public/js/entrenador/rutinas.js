@@ -6,6 +6,7 @@ import { initNavigation } from '../comun/navigation.js';
 import { api, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
 import { renderCompliance } from '../comun/cumplimiento.js';
+import { icon } from '../comun/icons.js';
 
 await initNavigation();
 
@@ -41,6 +42,9 @@ function renderRoutineCard(routine) {
       <div class="actions">
         <button class="btn secondary small" data-view="${routine.id}">Ver rutina</button>
         <a class="btn small" href="rutina-formulario.html?id=${routine.id}">Modificar</a>
+        <a class="btn secondary small" href="rutina-formulario.html?duplicar=${routine.id}">
+          ${icon('copiar')}Duplicar
+        </a>
       </div>
     </article>`;
 }
@@ -96,7 +100,12 @@ function renderRoutineDetail(routine, progress) {
           <h2>${escapeHtml(routine.name)}</h2>
           <p>${escapeHtml(routine.description || 'Sin descripción')}</p>
         </div>
-        <a class="btn" href="rutina-formulario.html?id=${routine.id}">Modificar rutina</a>
+        <div class="actions">
+          <a class="btn" href="rutina-formulario.html?id=${routine.id}">Modificar rutina</a>
+          <a class="btn secondary" href="rutina-formulario.html?duplicar=${routine.id}">
+            ${icon('copiar')}Duplicar
+          </a>
+        </div>
       </header>
       ${renderCompliance(routine, progress)}
       <h3 class="mt">La semana</h3>

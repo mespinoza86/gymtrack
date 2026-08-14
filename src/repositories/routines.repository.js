@@ -248,6 +248,10 @@ async function insertSet(client, sessionId, routineExerciseId, item) {
    reabre un día ya cerrado, porque el atleta pudo haberlo cerrado a propósito
    con menos ejercicios de los planificados. */
 async function refreshCompletion(client, sessionId, routineDayId, allowReopen) {
+  const wasCompleted = Boolean(
+    (await client.query('SELECT completed_at FROM workout_sessions WHERE id=$1', [sessionId]))
+      .rows[0]?.completed_at,
+  );
   const total = (
     await client.query('SELECT COUNT(*)::int AS n FROM routine_exercises WHERE routine_day_id=$1', [
       routineDayId,
@@ -273,7 +277,12 @@ async function refreshCompletion(client, sessionId, routineDayId, allowReopen) {
     )
   ).rows[0];
 
-  return { session, totalExercises: total, completedExercises: done };
+  return {
+    session,
+    totalExercises: total,
+    completedExercises: done,
+    newlyCompleted: !wasCompleted && Boolean(session.completed_at),
+  };
 }
 
 /* Lo que el atleta ya registró en esta sesión: qué ejercicios dio por
@@ -354,7 +363,7 @@ export async function logExercise(athleteId, sessionId, routineExerciseId, sets)
   return withTransaction(async (client) => {
     const session = (
       await client.query(
-        'SELECT id, routine_day_id FROM workout_sessions WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
+        'SELECT id, routine_day_id, completed_at FROM workout_sessions WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
         [sessionId, athleteId],
       )
     ).rows[0];
@@ -460,8 +469,27 @@ export async function finishWorkout(athleteId, sessionId, input) {
       )
     ).rows[0];
 
-    return { session: updated };
+    return {
+      session: updated,
+      newlyCompleted: !session.completed_at && Boolean(updated.completed_at),
+    };
   });
+}
+
+/* Datos mínimos para avisar al entrenador cuando se completa una jornada. */
+export async function workoutNotificationContext(sessionId) {
+  return (
+    await pool.query(
+      `SELECT r.trainer_id, r.name AS routine_name, rd.name AS day_name, rd.day_type,
+        ws.athlete_id, u.first_name AS athlete_first_name, u.last_name AS athlete_last_name
+       FROM workout_sessions ws
+       JOIN routine_days rd ON rd.id=ws.routine_day_id
+       JOIN routines r ON r.id=rd.routine_id
+       JOIN users u ON u.id=ws.athlete_id
+       WHERE ws.id=$1`,
+      [sessionId],
+    )
+  ).rows[0];
 }
 
 /* La rutina activa de cada atleta vinculado, para el resumen del entrenador.

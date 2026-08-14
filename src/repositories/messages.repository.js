@@ -78,6 +78,17 @@ export async function send(id, senderId, body) {
   return rows[0];
 }
 
+export async function recipient(id, senderId) {
+  return (
+    await pool.query(
+      `SELECT CASE WHEN trainer_id=$2 THEN athlete_id ELSE trainer_id END AS user_id
+       FROM conversations
+       WHERE id=$1 AND (trainer_id=$2 OR athlete_id=$2)`,
+      [id, senderId],
+    )
+  ).rows[0]?.user_id;
+}
+
 /* Marca como leídos los mensajes de la otra persona. Los propios se excluyen
    con `sender_id <> $2`, y los ya leídos se dejan con su fecha original. */
 export async function markRead(id, userId) {

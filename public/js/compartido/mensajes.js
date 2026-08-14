@@ -81,3 +81,8 @@ document.querySelector('#send').onsubmit = async (event) => {
 socket.on('message:new', refresh);
 
 await loadConversations();
+
+/* Los avisos de mensaje enlazan a la conversación concreta. Solo se intenta
+   abrirla después de cargar la lista; el servidor vuelve a validar acceso. */
+const requestedConversation = new URLSearchParams(location.search).get('conversation');
+if (requestedConversation) await openConversation(requestedConversation);

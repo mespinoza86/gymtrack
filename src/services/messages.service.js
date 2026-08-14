@@ -1,5 +1,6 @@
 import * as repo from '../repositories/messages.repository.js';
 import { HttpError } from '../utils/http-error.js';
+import * as notifications from './notifications.service.js';
 export const conversations = repo.conversations;
 async function access(id, userId) {
   if (!(await repo.canAccess(id, userId)))
@@ -12,5 +13,15 @@ export async function messages(id, userId) {
 }
 export async function send(id, userId, body) {
   await access(id, userId);
-  return repo.send(id, userId, body);
+  const message = await repo.send(id, userId, body);
+  const recipient = await repo.recipient(id, userId);
+  if (recipient)
+    await notifications.create({
+      userId: recipient,
+      type: 'message_received',
+      title: 'Nuevo mensaje',
+      body: 'Tienes un mensaje nuevo en tu conversación.',
+      link: `/compartido/mensajes.html?conversation=${id}`,
+    });
+  return message;
 }
