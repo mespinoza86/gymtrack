@@ -778,6 +778,16 @@ button.list-item.active { border-color: var(--brand); background: var(--brand-so
 .compliance-legend .heat { width: 14px; height: 14px; margin-left: var(--sp-3); }
 .compliance-legend .heat:first-child { margin-left: 0; }
 
+/* Panel para una gráfica que ya vive dentro de una tarjeta. En la pantalla de
+   progreso del atleta cada gráfica es una tarjeta suelta, pero aquí anidar
+   una tarjeta dentro de otra recargaría el bloque. */
+.chart-panel {
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
 /* ---------- Modal de video ---------- */
 
 .video-modal {

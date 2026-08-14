@@ -51,19 +51,11 @@ npm.cmd run db:migrate
 
 El comando registra cada archivo aplicado en `schema_migrations`, por lo que puede ejecutarse nuevamente sin duplicar tablas.
 
-Para cargar cuentas y datos básicos de demostración:
+### Crear tu cuenta
 
-```powershell
-npm.cmd run db:seed
-```
+No hay cuentas de demostración preparadas. Abre la aplicación, entra en **Crear una cuenta** y regístrate eligiendo el rol de entrenador o de atleta. Para probar los dos lados necesitarás una cuenta de cada tipo, y vincularlas con un código de invitación desde la pantalla de invitaciones del entrenador.
 
-Las cuentas son:
-
-- `entrenador@demo.local`
-- `atleta@demo.local`
-- Contraseña para ambas: `Demo1234!`
-
-Los datos demo son únicamente para desarrollo; deben eliminarse o desactivarse antes de una publicación real.
+Existe un comando que siembra dos cuentas demo (`npm.cmd run db:seed`), pensado solo para una base local recién creada. **Se detiene por su cuenta si detecta que la conexión no es local**, para no mezclar usuarios falsos con los reales en la base publicada.
 
 ## 4. Iniciar el servidor
 

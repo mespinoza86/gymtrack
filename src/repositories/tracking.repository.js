@@ -15,6 +15,15 @@ import { pool } from '../config/database.js';
 /* Guarda una medición. Si ya existe una del mismo atleta en esa fecha, se
    actualiza en lugar de duplicarla: así corregir una medición del día no
    deja dos filas en el historial ni en las gráficas. */
+/* Solo existe una medición por atleta y día, así que registrar dos veces la
+   misma fecha actualiza la fila en lugar de crear otra. Eso es lo correcto,
+   pero el entrenador y el atleta pueden anotar cosas distintas del mismo día:
+   si él apunta el peso y ella la cintura, la segunda escritura no puede
+   borrar la primera. Por eso cada columna se combina con `COALESCE`: un campo
+   que llega vacío significa «no lo medí», no «bórralo».
+
+   La contrapartida es que desde el formulario no se puede vaciar un valor ya
+   guardado; para corregir un dato hay que escribir el nuevo encima. */
 export async function addMeasurement(athleteId, recordedBy, input) {
   const { rows } = await pool.query(
     `INSERT INTO measurements
@@ -23,14 +32,14 @@ export async function addMeasurement(athleteId, recordedBy, input) {
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (athlete_id, measured_at) DO UPDATE SET
        recorded_by      = EXCLUDED.recorded_by,
-       weight_kg        = EXCLUDED.weight_kg,
-       body_fat_percent = EXCLUDED.body_fat_percent,
-       waist_cm         = EXCLUDED.waist_cm,
-       hip_cm           = EXCLUDED.hip_cm,
-       chest_cm         = EXCLUDED.chest_cm,
-       arm_cm           = EXCLUDED.arm_cm,
-       thigh_cm         = EXCLUDED.thigh_cm,
-       notes            = EXCLUDED.notes
+       weight_kg        = COALESCE(EXCLUDED.weight_kg, measurements.weight_kg),
+       body_fat_percent = COALESCE(EXCLUDED.body_fat_percent, measurements.body_fat_percent),
+       waist_cm         = COALESCE(EXCLUDED.waist_cm, measurements.waist_cm),
+       hip_cm           = COALESCE(EXCLUDED.hip_cm, measurements.hip_cm),
+       chest_cm         = COALESCE(EXCLUDED.chest_cm, measurements.chest_cm),
+       arm_cm           = COALESCE(EXCLUDED.arm_cm, measurements.arm_cm),
+       thigh_cm         = COALESCE(EXCLUDED.thigh_cm, measurements.thigh_cm),
+       notes            = COALESCE(EXCLUDED.notes, measurements.notes)
      RETURNING *`,
     [
       athleteId,

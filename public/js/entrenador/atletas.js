@@ -40,9 +40,15 @@ function renderAthlete(athlete, compliance) {
     ? new Date(athlete.latest_measurement).toLocaleDateString()
     : '—';
 
+  /* El nombre lleva a la ficha individual, que es donde se ve todo lo de esa
+     persona junto en lugar de repartido por pantallas. */
   return `
     <tr>
-      <td><strong>${escapeHtml(athlete.first_name)} ${escapeHtml(athlete.last_name)}</strong></td>
+      <td>
+        <a href="atleta-detalle.html?id=${athlete.id}">
+          <strong>${escapeHtml(athlete.first_name)} ${escapeHtml(athlete.last_name)}</strong>
+        </a>
+      </td>
       <td>${weekSummary(compliance.get(athlete.id))}</td>
       <td>${escapeHtml(athlete.email)}</td>
       <td>${peso}</td>

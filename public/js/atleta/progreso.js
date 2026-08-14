@@ -1,7 +1,14 @@
+/* Progreso del atleta: mediciones corporales, sus gráficas y el historial.
+
+   Las mediciones las puede anotar tanto el atleta como su entrenador, y son
+   exactamente las mismas: se guardan en una sola ficha por día. Esta pantalla
+   y la ficha del entrenador comparten el módulo que dibuja las gráficas, para
+   que los dos vean lo mismo. */
+
 import { initNavigation } from '../comun/navigation.js';
 import { api, formData, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
-import { renderChart, chartHeader } from '../comun/charts.js';
+import { renderMeasurementCharts, measurementSummary, METRICS } from '../comun/mediciones.js';
 
 await initNavigation();
 
@@ -12,64 +19,21 @@ document.querySelector('[name=measuredAt]').value = new Date().toISOString().sli
 const toNumber = (value) => (value === '' ? null : Number(value));
 const formatDate = (value) => new Date(value).toLocaleDateString();
 
-/* La API entrega las mediciones de la más reciente a la más antigua;
-   las gráficas necesitan el orden contrario para leerse de izquierda
-   a derecha. */
-function series(measurements, field) {
-  return [...measurements]
-    .reverse()
-    .map((item) => ({ x: item.measured_at, y: item[field] }))
-    .filter((point) => point.y !== null && point.y !== undefined);
-}
-
-function drawChart(container, title, points, unit) {
-  container.innerHTML = `${chartHeader(title, points, unit)}<div class="chart-holder"></div>`;
-  renderChart(container.querySelector('.chart-holder'), points, {
-    unit,
-    height: 210,
-    empty: 'Registra al menos una medición para ver la evolución.',
-  });
-}
-
 function historyItem(item) {
-  const detail = [
-    item.weight_kg ? `${item.weight_kg} kg` : '',
-    item.body_fat_percent ? `${item.body_fat_percent}% grasa` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const anotado = measurementSummary(item);
 
-  const sizes = [
-    item.waist_cm ? `Cintura ${item.waist_cm}` : '',
-    item.hip_cm ? `Cadera ${item.hip_cm}` : '',
-    item.chest_cm ? `Pecho ${item.chest_cm}` : '',
-    item.arm_cm ? `Brazo ${item.arm_cm}` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-
-  return `<div class="list-item">
-    <strong>${escapeHtml(formatDate(item.measured_at))}</strong>
-    ${detail ? `<p>${escapeHtml(detail)}</p>` : ''}
-    ${sizes ? `<small class="muted">${escapeHtml(sizes)}</small>` : ''}
-  </div>`;
+  return `
+    <div class="list-item">
+      <strong>${escapeHtml(formatDate(item.measured_at))}</strong>
+      ${anotado.length ? `<p>${escapeHtml(anotado.join(' · '))}</p>` : ''}
+      ${item.notes ? `<small class="muted">${escapeHtml(item.notes)}</small>` : ''}
+    </div>`;
 }
 
 async function load() {
   const { measurements } = await api('/api/tracking/measurements');
 
-  drawChart(
-    document.querySelector('#chart-weight'),
-    'Peso corporal',
-    series(measurements, 'weight_kg'),
-    'kg',
-  );
-  drawChart(
-    document.querySelector('#chart-waist'),
-    'Cintura',
-    series(measurements, 'waist_cm'),
-    'cm',
-  );
+  renderMeasurementCharts(document.querySelector('#charts'), measurements);
 
   history.innerHTML = measurements.length
     ? measurements.map(historyItem).join('')
@@ -79,9 +43,12 @@ async function load() {
 document.querySelector('#measurement').onsubmit = async (event) => {
   event.preventDefault();
   const values = formData(event.target);
-  for (const key of ['weightKg', 'bodyFatPercent', 'waistCm', 'hipCm', 'chestCm', 'armCm']) {
-    values[key] = toNumber(values[key]);
-  }
+
+  /* Los campos vacíos se envían como nulos y no como cero: no medirse la
+     cadera no significa que mida cero centímetros. El servidor conserva lo
+     que ya hubiera guardado de ese día en los campos que lleguen vacíos. */
+  for (const metric of METRICS) values[metric.name] = toNumber(values[metric.name]);
+
   try {
     await api('/api/tracking/measurements', { method: 'POST', body: JSON.stringify(values) });
     showMessage(message, 'Medición guardada correctamente.');

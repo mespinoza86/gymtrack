@@ -1,7 +1,7 @@
 # Visión del producto: plataforma para entrenadores y atletas
 
 > Documento vivo para conservar el contexto, las ideas y las decisiones del proyecto.
-> Última actualización: 11 de agosto de 2026.
+> Última actualización: 14 de agosto de 2026.
 
 ## Estado actual
 
@@ -1346,7 +1346,7 @@ El usuario confirmó que **el video ya se reproduce dentro de la aplicación**. 
 
 Se revisó el estado real del repositorio para dejarlo anotado con exactitud. Durante el día el usuario confirmó por su cuenta el commit `441805d` (`Arreglando los files para que sea legible todo`), que corresponde al trabajo del 13 de agosto: tema oscuro predeterminado y legibilidad de todo el JavaScript. Aquella anotación de esta bitácora que decía que el último commit era `701ec18` quedó desfasada por ese motivo.
 
-**Todo el trabajo del 14 de agosto está sin confirmar en Git**: 16 archivos, de los cuales cuatro son nuevos y ni siquiera están rastreados (`database/migrations/004_rutinas_semanales.sql`, `public/js/comun/video.js`, `test/video-embed.test.js` y `test/weekly-routines.test.js`). Es el pendiente más urgente, porque incluye la migración y las dos baterías de pruebas nuevas.
+**Trabajo del día ya confirmado en Git.** El usuario creó dos commits, `a69dc19` (`Adding rutinas y entrenador changes and youtube`) y `1c91e86` (`adding phase4`). Se comprobó que el árbol de trabajo quedó limpio y que los cuatro archivos que antes ni siquiera estaban rastreados ya forman parte del repositorio: `database/migrations/004_rutinas_semanales.sql`, `public/js/comun/video.js`, `test/video-embed.test.js` y `test/weekly-routines.test.js`. El trabajo del 14 de agosto está respaldado.
 
 ### Lo que sí quedó terminado hoy
 
@@ -1393,9 +1393,9 @@ Con esto queda completo el bloque de rutinas semanales acordado al empezar el d�
 
 ### Pendientes, en orden recomendado
 
-**1. Confirmar en Git el trabajo del día.** Nada de las fases 1 a 4 está respaldado todavía.
+**1. Confirmar en Git el trabajo del día.** ✅ Hecho: commits `a69dc19` y `1c91e86`.
 
-**2. Cadena de despliegue, bloqueada desde el 11 de agosto.** Aplicar en Neon las migraciones `003_exercise_status.sql` y `004_rutinas_semanales.sql`, en ese orden, antes de publicar nada en Render. Después, prueba de humo completa del recorrido en producción.
+**2. Cadena de despliegue.** ✅ Neon ya está migrada (ver más abajo). Queda publicar en Render el código de hoy y hacer la prueba de humo del recorrido en producción.
 
 **3. Ampliar las pruebas automatizadas.** Las 24 actuales cubren cambio de contraseña, rutinas semanales y enlaces de video. Sigue sin haber cobertura de autenticación y roles, invitaciones y vinculaciones, aislamiento de los datos entre atletas, y mensajería.
 
@@ -1403,4 +1403,108 @@ Con esto queda completo el bloque de rutinas semanales acordado al empezar el d�
 
 **5. Funciones del MVP que siguen sin existir.** Las fotografías de progreso tienen su tabla pero no hay almacenamiento de archivos ni interfaz. La tabla de notificaciones **no está conectada a ningún evento** del código de `src`. No existe la ficha individual del atleta (`atleta-detalle.html`), que sí estaba en el diseño original, ni un formulario para que el entrenador registre medidas. Tampoco hay duplicar ni archivar rutinas desde la interfaz.
 
-**6. Cabos sueltos menores.** `multer` sigue declarado en `package.json` **sin usarse en ningún archivo de `src`**. Persiste la advertencia de `pg`/`pg-connection-string` sobre los modos SSL, que conviene resolver haciendo explícito `sslmode=verify-full` antes de actualizar a `pg` 9. El `README.md` documenta unas cuentas demo (`entrenador@demo.local` y `atleta@demo.local`) que **ya no existen** en la base local, así que sus credenciales confunden más que ayudan. Y la rutina que quedó archivada antes de la migración `004` no puede enlazarse con su versión activa, porque esa relación nunca se guardó; solo afecta a ese par preexistente.
+**6. Cabos sueltos menores.** `multer` sigue declarado en `package.json` **sin usarse en ningún archivo de `src`**. Persiste la advertencia de `pg`/`pg-connection-string` sobre los modos SSL, que conviene resolver haciendo explícito `sslmode=verify-full` antes de actualizar a `pg` 9. El `README.md` documenta unas cuentas demo (`entrenador@demo.local` y `atleta@demo.local`) que **no existen en la base que el proyecto usa de verdad**, la de Neon: allí nunca se ejecutó el seed, y ahora además el guardarraíl lo impide. Esas credenciales confunden más que ayudan y conviene sustituirlas por una nota explicando que cada quien crea su cuenta desde el registro. Y la rutina que quedó archivada antes de la migración `004` no puede enlazarse con su versión activa, porque esa relación nunca se guardó; solo afecta a ese par preexistente.
+
+## Descubrimiento importante: se estuvo trabajando contra la base de producción
+
+Al terminar la fase 4, el usuario dijo haber aplicado las migraciones en Neon. Antes de darlo por bueno se comprobó el estado real, y apareció algo que ninguno de los dos esperaba.
+
+### Qué pasó
+
+**El archivo `.env` apuntaba a Neon, no a PostgreSQL local**, y llevaba así varios días. La bitácora afirmaba desde el 9 de agosto que «la conexión local conservada en `.env` no debe reemplazarse»; eso dejó de ser cierto en algún momento y nadie actualizó el documento. Ese dato viejo indujo a error durante toda la jornada.
+
+Las marcas de tiempo de `schema_migrations` en Neon lo dejaron claro:
+
+| Migración | Aplicada en Neon |
+|---|---|
+| `001_initial_schema.sql` y `002_seed_exercises.sql` | 10 de agosto, 03:55 |
+| `003_exercise_status.sql` | 12 de agosto, 03:42 |
+| `004_rutinas_semanales.sql` | **14 de agosto, 18:14** |
+
+Esas 18:14 corresponden al `npm run db:migrate` ejecutado al comenzar la fase 1, creyendo que iba contra la base local. Cuando el usuario ejecutó el comando por su cuenta hacia las 20:20, ya estaba todo aplicado y por eso no vio nada raro.
+
+La consecuencia es que **todo el trabajo del 14 de agosto se hizo contra la base de datos de producción**, incluidas las pruebas automatizadas y las comprobaciones temporales por HTTP, que crean y eliminan usuarios, rutinas y sesiones.
+
+### Daños: ninguno, pero por higiene y no por diseño
+
+Se auditó Neon y quedó limpia: **cero usuarios de prueba** de los prefijos `rutina-`, `http-`, `rt-`, `f3-` y `f4-`, ninguna invitación huérfana, y solo las dos cuentas reales del usuario con sus tres rutinas y once sesiones, incluida `Rutina_Agosto_2026`, creada a las 18:44 probando el constructor semanal nuevo. Cada comprobación temporal borraba lo suyo al terminar y verificaba el número de filas eliminadas, lo que evitó el problema. Aun así, el resultado dependió de esa disciplina y no de una separación real de entornos.
+
+### Estado confirmado de Neon
+
+Migrada por completo: las cuatro migraciones registradas, 21 tablas, las columnas `routines.weeks`, `routines.origin_routine_id`, `routine_days.day_type`, `routine_days.mirrors_day_order` y `workout_sessions.week_number`, y la tabla `workout_exercise_log`. El punto 2 de los pendientes queda resuelto en su parte de base de datos.
+
+### Decisión final: se trabaja contra Neon, a propósito
+
+Hubo un primer intento de separar los entornos. Se le plantearon tres opciones al usuario y en un principio eligió volver a la base local, así que se reescribió `.env` con la conexión local y la de Neon comentada como respaldo.
+
+**Ese cambio no llegó a aplicarse.** El usuario tenía `.env` abierto en el editor desde antes, con la versión anterior en memoria, y al guardar sobrescribió el archivo reescrito. Se comprobó y `.env` había vuelto exactamente a su estado previo. Conviene recordarlo: **editar un archivo que la otra parte tiene abierto en el IDE se pierde en cuanto esa persona guarda**; si hay que tocar un archivo así, es mejor que lo edite quien lo tiene abierto.
+
+Al explicárselo, el usuario decidió **dejarlo apuntando a Neon**, que es como ha venido trabajando. La decisión se respeta: sus datos reales están allí y es su proyecto. Queda por tanto establecido que, salvo que se diga lo contrario:
+
+- El desarrollo local y las pruebas automatizadas usan **la misma base que el sitio publicado**.
+- `npm test` escribe y borra en esa base. Las pruebas actuales crean usuarios temporales con prefijos propios y comprueban el número de filas eliminadas al limpiar, pero **cualquier prueba nueva debe mantener esa disciplina**: acotar siempre los borrados a sus propios datos y verificar el recuento.
+
+### Protección añadida a los datos demo
+
+El comando verdaderamente peligroso en este escenario era `npm run db:seed`: crea las cuentas `entrenador@demo.local` y `atleta@demo.local`, su vinculación y su conversación, y ejecutado contra Neon habría mezclado usuarios falsos entre los reales.
+
+Se añadió un guardarraíl en `database/seed.js`: lee el `hostname` de la conexión y, si no es `localhost` ni `127.0.0.1`, se detiene explicando por qué en lugar de sembrar nada. Para forzarlo hay que pedirlo a propósito con `SEED_ALLOW_REMOTE=true`. Se comprobó en ejecución real: con la conexión actual el comando se detiene y no escribe.
+
+No se puso un guardarraíl equivalente en `npm test`, porque bloquearlo dejaría al usuario sin poder ejecutar las pruebas en absoluto, que sería peor que el riesgo que evita.
+
+### Regla que queda establecida
+
+**Antes de tocar datos, comprobar a qué base apunta `.env`; no fiarse de lo que diga este documento.** Un dato de configuración escrito en la bitácora envejece en cuanto alguien cambia el archivo, y este caso demuestra que el documento puede llevar días equivocado sin que se note. La comprobación es inmediata y no expone secretos: basta con leer el `hostname` de `DATABASE_URL`.
+
+## Bloque nuevo acordado: cuatro fases
+
+Terminado el bloque de rutinas semanales, el usuario pidió profundizar en las funciones del MVP que nunca se construyeron y, tras revisarlas una por una en el código, acordó este orden:
+
+1. **Ficha individual del atleta.**
+2. **Duplicar rutinas.**
+3. **Notificaciones.**
+4. **Fotos de progreso.**
+
+Se dejaron las fotos para el final porque son las que exigen una decisión de infraestructura: el disco de Render se borra en cada despliegue, así que necesitan almacenamiento de objetos externo, y además son datos corporales que piden un control de acceso cuidadoso.
+
+Durante esa revisión se corrigió un dato que se había dado por bueno: **la API ya permitía al entrenador registrar mediciones de sus atletas**. `POST /api/tracking/measurements` acepta un `athleteId` y `authorizedAthlete` comprueba el vínculo activo antes de aceptar. Lo que faltaba era solo el formulario.
+
+### Fase 1 terminada: ficha individual del atleta
+
+**El problema que resuelve.** La información del entrenador estaba organizada por función y no por persona: rutinas en una pantalla, check-ins en otra, nutrición en otra. Para responder «¿cómo va Andrés?» había que recorrer cuatro pantallas filtrando mentalmente, y la lista de atletas era una tabla plana donde **no se podía pulsar sobre nadie**.
+
+**Sin cambios en el servidor.** Se comprobó endpoint por endpoint que todo lo necesario ya existía: `GET /api/links/people` para la cabecera, `GET /api/routines` filtrando por `athlete_id` y `status`, `GET /api/routines/:id/progress` para la rutina y su mapa, `GET /api/tracking/measurements?athleteId=` que ya aceptaba el filtro y valida el vínculo, y los listados de check-ins y nutrición, que devuelven todo lo del entrenador y se filtran en la pantalla. La fase resultó ser exclusivamente de interfaz.
+
+**El mapa de cumplimiento se extrajo a un módulo compartido.** Lo necesitaban la pantalla de rutinas y la ficha nueva, y duplicar sesenta líneas habría condenado a las dos vistas a separarse con el tiempo. Se creó `public/js/comun/cumplimiento.js` con `renderCompliance`, y `public/js/entrenador/rutinas.js` pasó de 222 a 133 líneas al quitarle la copia local.
+
+**Qué muestra la ficha.** Cabecera con nombre, correo y fecha de vinculación; tres indicadores —cumplimiento de la semana, último peso y check-ins sin responder—; la rutina activa con su mapa de cumplimiento y acceso directo a modificarla; las gráficas de peso y cintura con el historial completo; los cinco check-ins más recientes marcados como respondidos o pendientes; y el plan de nutrición con sus macros.
+
+**Decisión: es una vista de conjunto, no un duplicado.** Los check-ins y la nutrición se muestran en resumen y enlazan a sus pantallas completas, que es donde viven esas conversaciones. Duplicar aquí el flujo de responder un check-in habría creado dos sitios que mantener. La única acción que se hace desde la ficha es **registrar una medición**, porque era justo la que no existía en ninguna parte.
+
+**Detalle de interfaz.** En la pantalla del atleta cada gráfica es una tarjeta suelta, pero aquí ya están dentro de una, así que anidar tarjetas habría recargado el bloque. Se añadió `.chart-panel`, un panel más ligero para gráficas que viven dentro de una tarjeta.
+
+**Archivos:** se crearon `public/entrenador/atleta-detalle.html`, `public/js/entrenador/atleta-detalle.js` y `public/js/comun/cumplimiento.js`; se modificaron `public/js/entrenador/rutinas.js`, `public/js/entrenador/atletas.js` —el nombre de cada atleta es ahora un enlace a su ficha— y `public/css/components.css`.
+
+**Verificaciones ejecutadas.**
+
+- Comprobación temporal por HTTP con 18 controles, todos correctos: que `people` traiga los campos de la cabecera, que **el entrenador pueda registrar una medición de su atleta** y volver a leerla, que los campos vacíos queden nulos y no en cero, que el muslo se guarde —un campo que el formulario del atleta no ofrece—, que **un entrenador ajeno reciba 403 tanto al leer como al escribir**, y que rutinas, planes y check-ins traigan `athlete_id` y los campos concretos que la ficha pinta. Las tres cuentas temporales se eliminaron y se comprobó que no quedara nada.
+- Comprobación del contrato de la pantalla, 14 controles: identificadores, campos del formulario, ausencia de atributos `style`, escapado de textos, uso del módulo compartido en las dos pantallas, **que el mapa ya no esté duplicado**, que la lista enlace a la ficha y que las clases usadas tengan estilo.
+- Las 24 pruebas automatizadas siguen pasando, `format:check` conforme y las páginas nuevas responden 200.
+
+**Pendiente de esta fase.** Confirmación visual del usuario: entrar a Atletas, pulsar sobre un nombre y revisar la ficha completa, incluido registrar una medición desde ahí y comprobar que aparece en la gráfica y en el historial.
+
+## Sesión del 14 de agosto de 2026: continuidad de la bitácora
+
+El usuario pidió que `VISION_PRODUCTO.md` siga siendo la fuente de contexto del proyecto y que, desde esta sesión, se registre aquí **todo trabajo realizado, decisión tomada, verificación ejecutada, problema encontrado y pendiente nuevo**. La actualización debe hacerse durante cada bloque de trabajo y no dejarse únicamente para el cierre de la jornada.
+
+### Punto exacto de reanudación
+
+- El bloque vigente conserva este orden: ficha individual del atleta, duplicar rutinas, notificaciones y fotos de progreso.
+- La **ficha individual del atleta está implementada**, pero todavía requiere la confirmación visual del usuario en el navegador.
+- Después de esa ficha se empezó un ajuste adicional para que atleta y entrenador compartan correctamente una única medición por fecha: si uno registra peso y el otro cintura el mismo día, el segundo guardado debe completar la ficha sin borrar el primer dato. También se extrajo la presentación de las mediciones a `public/js/comun/mediciones.js` para que ambas vistas dibujen el mismo conjunto de métricas.
+- Ese ajuste ya tiene la prueba nueva `test/measurements-sync.test.js`, pero todo este bloque sigue como **trabajo local sin commit** junto con la ficha y otros cambios de documentación e higiene.
+- La siguiente fase funcional acordada, una vez revisado y cerrado este trabajo, es **duplicar rutinas**.
+
+### Regla operativa confirmada para esta sesión
+
+Antes de ejecutar migraciones, semillas, pruebas o comprobaciones que escriban datos se verificará el `hostname` de `DATABASE_URL`, sin mostrar credenciales. La configuración conocida apunta a Neon y las pruebas automatizadas crean y eliminan datos temporales allí, por lo que no se ejecutarán de manera rutinaria sin tener presente ese impacto.

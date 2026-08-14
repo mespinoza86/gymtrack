@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Ficha del atleta</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1 id="athlete-name">Ficha del atleta</h1>
+          <p class="muted" id="athlete-meta">Cargando…</p>
+        </div>
+        <div class="top-actions">
+          <a class="btn secondary" href="atletas.html">Volver</a>
+        </div>
+      </header>
+
+      <div id="message" hidden></div>
+
+      <div id="content" hidden>
+        <div class="grid three" id="summary"></div>
+
+        <section class="card mt">
+          <h2>Rutina y cumplimiento</h2>
+          <div id="routine">
+            <div class="skeleton skeleton-card"></div>
+          </div>
+        </section>
+
+        <section class="card mt">
+          <h2>Progreso</h2>
+          <div class="grid two" id="charts">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+
+          <h3 class="mt">Registrar una medición</h3>
+          <p class="muted">Queda guardada en el historial del atleta, igual que si la anotara él.</p>
+          <form id="measurement">
+            <div class="form-row">
+              <div class="field">
+                <label for="measuredAt">Fecha</label>
+                <input id="measuredAt" name="measuredAt" type="date" required>
+              </div>
+              <div class="field">
+                <label for="weightKg">Peso (kg)</label>
+                <input id="weightKg" name="weightKg" type="number" min="1" max="1000" step=".1" inputmode="decimal">
+              </div>
+              <div class="field">
+                <label for="bodyFatPercent">Grasa (%)</label>
+                <input id="bodyFatPercent" name="bodyFatPercent" type="number" min="0" max="100" step=".1" inputmode="decimal">
+              </div>
+            </div>
+            <div class="form-row compact">
+              <div class="field">
+                <label for="waistCm">Cintura (cm)</label>
+                <input id="waistCm" name="waistCm" type="number" min="1" max="500" step=".1" inputmode="decimal">
+              </div>
+              <div class="field">
+                <label for="hipCm">Cadera (cm)</label>
+                <input id="hipCm" name="hipCm" type="number" min="1" max="500" step=".1" inputmode="decimal">
+              </div>
+              <div class="field">
+                <label for="chestCm">Pecho (cm)</label>
+                <input id="chestCm" name="chestCm" type="number" min="1" max="500" step=".1" inputmode="decimal">
+              </div>
+              <div class="field">
+                <label for="armCm">Brazo (cm)</label>
+                <input id="armCm" name="armCm" type="number" min="1" max="500" step=".1" inputmode="decimal">
+              </div>
+              <div class="field">
+                <label for="thighCm">Muslo (cm)</label>
+                <input id="thighCm" name="thighCm" type="number" min="1" max="500" step=".1" inputmode="decimal">
+              </div>
+            </div>
+            <div class="field">
+              <label for="notes">Notas</label>
+              <textarea id="notes" name="notes" maxlength="2000"></textarea>
+            </div>
+            <button class="btn">Guardar medición</button>
+          </form>
+
+          <h3 class="mt">Historial</h3>
+          <div id="measurements" class="list"></div>
+        </section>
+
+        <section class="card mt">
+          <div class="page-header">
+            <h2>Check-ins</h2>
+            <a class="btn secondary small" href="checkins.html">Revisar y responder</a>
+          </div>
+          <div id="checkins" class="list"></div>
+        </section>
+
+        <section class="card mt">
+          <div class="page-header">
+            <h2>Nutrición</h2>
+            <a class="btn secondary small" href="nutricion.html">Gestionar planes</a>
+          </div>
+          <div id="nutrition" class="list"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/js/entrenador/atleta-detalle.js"></script>
+</body>
+
+</html>

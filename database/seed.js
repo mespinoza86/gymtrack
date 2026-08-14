@@ -1,5 +1,25 @@
+/* Datos de demostración para desarrollo.
+
+   Este proyecto trabaja contra la base alojada en Neon, que es la misma que
+   usa el sitio publicado. Sembrar cuentas demo ahí crearía usuarios falsos
+   entre los reales, así que el comando se detiene solo cuando detecta que la
+   conexión no es local. Para forzarlo hay que decirlo a propósito con
+   `SEED_ALLOW_REMOTE=true`. */
+
 import bcrypt from 'bcryptjs';
 import { pool } from '../src/config/database.js';
+import { env } from '../src/config/environment.js';
+
+const host = new URL(env.databaseUrl).hostname;
+const esLocal = host === 'localhost' || host === '127.0.0.1';
+
+if (!esLocal && process.env.SEED_ALLOW_REMOTE !== 'true') {
+  console.error(`La conexión apunta a "${host}", que no es una base local.`);
+  console.error('Los datos demo no se cargan en una base remota por seguridad.');
+  console.error('Si de verdad quieres hacerlo: SEED_ALLOW_REMOTE=true npm run db:seed');
+  await pool.end();
+  process.exit(1);
+}
 
 try {
   const passwordHash = await bcrypt.hash('Demo1234!', 12);
