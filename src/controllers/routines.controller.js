@@ -38,6 +38,9 @@ export async function createRoutine(req, res) {
 export async function updateRoutine(req, res) {
   res.json({ routine: await service.updateRoutine(req.params.id, req.session.user.id, req.body) });
 }
+export async function compliance(req, res) {
+  res.json(await service.trainerCompliance(req.session.user.id));
+}
 export async function progress(req, res) {
   res.json(await service.routineProgress(req.params.id, req.session.user));
 }

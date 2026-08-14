@@ -464,6 +464,53 @@ export async function finishWorkout(athleteId, sessionId, input) {
   });
 }
 
+/* La rutina activa de cada atleta vinculado, para el resumen del entrenador.
+
+   `DISTINCT ON` se queda con la más reciente cuando un atleta tiene varias
+   activas. El `LEFT JOIN` conserva a los atletas que aún no tienen ninguna:
+   en la lista deben aparecer igual, con su aviso. */
+export async function trainerAthleteRoutines(trainerId) {
+  return (
+    await pool.query(
+      `SELECT DISTINCT ON (u.id)
+        u.id AS athlete_id, u.first_name, u.last_name,
+        r.id AS routine_id, r.name AS routine_name, r.weeks, r.start_date,
+        COALESCE(r.origin_routine_id, r.id) AS origin_id,
+        (SELECT COUNT(*)::int FROM routine_days d
+          WHERE d.routine_id = r.id AND d.day_type = 'training') AS training_days
+      FROM trainer_athlete_links l
+      JOIN users u ON u.id = l.athlete_id
+      LEFT JOIN routines r
+        ON r.athlete_id = u.id AND r.trainer_id = $1 AND r.status = 'active'
+      WHERE l.trainer_id = $1 AND l.status = 'active'
+      ORDER BY u.id, r.updated_at DESC NULLS LAST`,
+      [trainerId],
+    )
+  ).rows;
+}
+
+/* Días de entrenamiento cumplidos en una semana concreta, para varias rutinas
+   a la vez. Se resuelve en una sola consulta con dos listas en paralelo para
+   no lanzar una por atleta. */
+export async function completedTrainingDays(origins, weeks) {
+  if (!origins.length) return [];
+
+  return (
+    await pool.query(
+      `WITH objetivo AS (SELECT * FROM unnest($1::uuid[], $2::int[]) AS t(origin, week))
+      SELECT o.origin, o.week,
+        COUNT(DISTINCT CASE WHEN ws.id IS NOT NULL THEN rd.day_order END)::int AS completed
+      FROM objetivo o
+      LEFT JOIN routines r ON COALESCE(r.origin_routine_id, r.id) = o.origin
+      LEFT JOIN routine_days rd ON rd.routine_id = r.id AND rd.day_type = 'training'
+      LEFT JOIN workout_sessions ws
+        ON ws.routine_day_id = rd.id AND ws.week_number = o.week AND ws.completed_at IS NOT NULL
+      GROUP BY o.origin, o.week`,
+      [origins, weeks],
+    )
+  ).rows;
+}
+
 /* Cumplimiento del atleta sobre una rutina, franja por franja.
 
    Recorre todo el linaje de la rutina —las versiones archivadas por

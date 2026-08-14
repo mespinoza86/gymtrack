@@ -1357,18 +1357,50 @@ Se revisó el estado real del repositorio para dejarlo anotado con exactitud. Du
 - Reproducción de videos de YouTube dentro de la aplicación.
 - Las pruebas automatizadas pasaron de **1 a 22** en un solo día.
 
+### Fase 4 terminada: el entrenador ve el cumplimiento
+
+Con esto queda completo el bloque de rutinas semanales acordado al empezar el día.
+
+**Endpoint nuevo `GET /api/routines/compliance`**, solo para entrenadores. Devuelve, por cada atleta vinculado, su rutina activa y cómo va en la semana en curso. Detalles de la implementación:
+
+- La consulta usa `DISTINCT ON` para quedarse con la rutina activa más reciente cuando un atleta tiene varias, y un `LEFT JOIN` para que **los atletas sin rutina aparezcan igual** en la lista, con su aviso, en lugar de desaparecer.
+- La semana en curso se calcula en el servicio con `currentWeek`, la misma función que usa el resto de la aplicación, en vez de repetir la regla dentro del SQL. Duplicar una regla de negocio en dos sitios es pedir que se separen con el tiempo.
+- El recuento de días cumplidos se resuelve **en una sola consulta para todos los atletas**, pasando dos listas en paralelo con `unnest`, en lugar de lanzar una consulta por atleta.
+
+**Decisión: los días libres no cuentan.** El resumen dice `3 de 5 días` contando solo los días de entrenamiento. Incluir los días libres inflaría el cumplimiento con jornadas en las que no había nada que hacer, y un atleta que solo marcase descansos aparecería como cumplidor.
+
+**Mapa de cumplimiento en el detalle de la rutina.** Al pulsar `Ver rutina`, el entrenador ve ahora una cuadrícula de semanas por días donde cada celda está coloreada: cumplido, a medias, sin empezar o día libre. De un vistazo se ve en qué semana abandonó el atleta, que es justo lo que hay que saber para ajustar el plan. Cada celda lleva su texto en `title` y en un texto solo para lectores de pantalla. Un día libre sin registrar se dibuja con borde discontinuo en vez de marcarse como pendiente: no haber registrado un descanso no es un incumplimiento.
+
+**Una petición menos.** La pantalla pasó a pedir `GET /api/routines/:id/progress`, que ya devuelve la rutina completa además de la cuadrícula, en lugar de pedir la rutina por un lado y el progreso por otro.
+
+**Resumen en la lista de atletas.** Se añadió la columna `Esta semana`, con el recuento de días y la semana del plan. El color es verde solo al completar la semana y ámbar si el atleta no ha empezado; el estado intermedio se deja neutro a propósito, para no regañar a nadie por ir a mitad de semana.
+
+**Archivos tocados:** `src/repositories/routines.repository.js`, `src/services/routines.service.js`, `src/controllers/routines.controller.js`, `src/routes/routines.routes.js`, `public/js/entrenador/rutinas.js`, `public/js/entrenador/atletas.js`, `public/entrenador/atletas.html`, `public/css/components.css` y `test/weekly-routines.test.js`.
+
+**Dos errores propios corregidos durante la verificación.** Las dos primeras pruebas del resumen fallaron, y en ambos casos el fallo estaba en la prueba y no en el código:
+
+1. Se esperaba un día cumplido y salía cero. El plan de la prueba empieza el 3 de agosto, así que **la semana en curso es la 2**, mientras que las sesiones anteriores se habían registrado en la 1. El resumen acertaba. Además la expectativa dependía de la fecha en que se ejecutara la prueba, así que se rehízo para calcular la semana en curso y completar un día dentro de ella, quedando independiente del calendario.
+2. La segunda prueba creaba un segundo entrenador que chocaba en el correo con el primero, porque el ayudante lo componía solo con el rol y una marca de tiempo común. Se le añadió un sufijo.
+
+**Verificaciones ejecutadas.**
+
+- Dos pruebas automatizadas nuevas: que el resumen cuenta solo los días de entrenamiento y que no incluye atletas de otro entrenador. **El total pasó de 22 a 24 pruebas.**
+- Comprobación temporal por HTTP con 16 controles, todos correctos: que **la ruta `/compliance` no la captura `/:id`** (por eso se registra antes), que un atleta recibe 403 al pedir el resumen, que un atleta sin rutina aparece igual, que la semana en curso se calcula bien, que un día libre cumplido no infla la cuenta, que **lo cumplido en la semana 3 no suma en la semana 1**, que un entrenador ajeno no ve nada, y que `progress` devuelve rutina y cuadrícula para pintar el mapa de una sola vez.
+- Comprobación del contrato de las dos pantallas, 9 controles: clases con estilo y en uso, los cuatro estados del mapa definidos, **que el `colspan` de la fila vacía coincida con las cinco columnas** y que cada fila tenga tantas celdas como cabeceras, escapado de nombres y ausencia de atributos `style`.
+- `npm.cmd run format:check` conforme, `git diff --check` limpio y las páginas implicadas responden 200.
+
+**Pendiente de esta fase.** Confirmación visual del usuario: abrir una rutina como entrenador y revisar el mapa, y mirar la columna `Esta semana` en la lista de atletas.
+
 ### Pendientes, en orden recomendado
 
-**1. Confirmar en Git el trabajo del día.** Nada de las fases 1 a 3 está respaldado todavía.
+**1. Confirmar en Git el trabajo del día.** Nada de las fases 1 a 4 está respaldado todavía.
 
-**2. Fase 4, la única parte del bloque acordado que falta.** El entrenador todavía **no ve** el cumplimiento de sus atletas: hay que construir el mapa de semanas por días y el resumen del tipo `Semana 2 · 3 de 5 días` en la lista de atletas. El endpoint `GET /api/routines/:id/progress` ya existe, está probado y devuelve exactamente esos datos; falta solo la interfaz.
+**2. Cadena de despliegue, bloqueada desde el 11 de agosto.** Aplicar en Neon las migraciones `003_exercise_status.sql` y `004_rutinas_semanales.sql`, en ese orden, antes de publicar nada en Render. Después, prueba de humo completa del recorrido en producción.
 
-**3. Cadena de despliegue, bloqueada desde el 11 de agosto.** Aplicar en Neon las migraciones `003_exercise_status.sql` y `004_rutinas_semanales.sql`, en ese orden, antes de publicar nada en Render. Después, prueba de humo completa del recorrido en producción.
+**3. Ampliar las pruebas automatizadas.** Las 24 actuales cubren cambio de contraseña, rutinas semanales y enlaces de video. Sigue sin haber cobertura de autenticación y roles, invitaciones y vinculaciones, aislamiento de los datos entre atletas, y mensajería.
 
-**4. Ampliar las pruebas automatizadas.** Las 22 actuales cubren cambio de contraseña, rutinas semanales y enlaces de video. Sigue sin haber cobertura de autenticación y roles, invitaciones y vinculaciones, aislamiento de los datos entre atletas, y mensajería.
+**4. Endurecimiento antes de datos reales.** No hay token CSRF explícito: la protección se apoya solo en `sameSite=lax`. Faltan también recuperación de contraseña y verificación de correo.
 
-**5. Endurecimiento antes de datos reales.** No hay token CSRF explícito: la protección se apoya solo en `sameSite=lax`. Faltan también recuperación de contraseña y verificación de correo.
+**5. Funciones del MVP que siguen sin existir.** Las fotografías de progreso tienen su tabla pero no hay almacenamiento de archivos ni interfaz. La tabla de notificaciones **no está conectada a ningún evento** del código de `src`. No existe la ficha individual del atleta (`atleta-detalle.html`), que sí estaba en el diseño original, ni un formulario para que el entrenador registre medidas. Tampoco hay duplicar ni archivar rutinas desde la interfaz.
 
-**6. Funciones del MVP que siguen sin existir.** Las fotografías de progreso tienen su tabla pero no hay almacenamiento de archivos ni interfaz. La tabla de notificaciones **no está conectada a ningún evento** del código de `src`. No existe la ficha individual del atleta (`atleta-detalle.html`), que sí estaba en el diseño original, ni un formulario para que el entrenador registre medidas. Tampoco hay duplicar ni archivar rutinas desde la interfaz.
-
-**7. Cabos sueltos menores.** `multer` sigue declarado en `package.json` **sin usarse en ningún archivo de `src`**. Persiste la advertencia de `pg`/`pg-connection-string` sobre los modos SSL, que conviene resolver haciendo explícito `sslmode=verify-full` antes de actualizar a `pg` 9. El `README.md` documenta unas cuentas demo (`entrenador@demo.local` y `atleta@demo.local`) que **ya no existen** en la base local, así que sus credenciales confunden más que ayudan. Y la rutina que quedó archivada antes de la migración `004` no puede enlazarse con su versión activa, porque esa relación nunca se guardó; solo afecta a ese par preexistente.
+**6. Cabos sueltos menores.** `multer` sigue declarado en `package.json` **sin usarse en ningún archivo de `src`**. Persiste la advertencia de `pg`/`pg-connection-string` sobre los modos SSL, que conviene resolver haciendo explícito `sslmode=verify-full` antes de actualizar a `pg` 9. El `README.md` documenta unas cuentas demo (`entrenador@demo.local` y `atleta@demo.local`) que **ya no existen** en la base local, así que sus credenciales confunden más que ayudan. Y la rutina que quedó archivada antes de la migración `004` no puede enlazarse con su versión activa, porque esa relación nunca se guardó; solo afecta a ese par preexistente.

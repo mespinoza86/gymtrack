@@ -12,9 +12,9 @@ import * as routines from '../src/services/routines.service.js';
 
 const marca = Date.now();
 
-async function crearUsuario(role) {
+async function crearUsuario(role, sufijo = '') {
   return users.createUser({
-    email: `rutina-${role}-${marca}@demo.local`,
+    email: `rutina-${role}${sufijo}-${marca}@demo.local`,
     passwordHash: await bcrypt.hash('Prueba123', 4),
     firstName: 'Prueba',
     lastName: 'Temporal',
@@ -214,6 +214,44 @@ test('rutina semanal con días libres, días espejo y cumplimiento por ejercicio
     assert.equal(franja.completedExercises, 2);
     assert.equal(franja.totalExercises, 2);
     assert.ok(progress.some((item) => item.dayOrder === 2 && item.status === 'completed'));
+  });
+
+  /* El resumen mira siempre la semana en curso, que depende de la fecha de
+     inicio del plan y por tanto del día en que se ejecute la prueba. Para no
+     atarla al calendario se calcula esa semana y se completa un día en ella. */
+  await t.test('el resumen del entrenador cuenta solo los días de entrenamiento', async () => {
+    const semana = routines.currentWeek({ start_date: plan.startDate, weeks: plan.weeks });
+
+    const abierta = await routines.startWorkout(athlete.id, dia1.id, semana);
+    for (const ejercicio of dia1.exercises)
+      await routines.logExercise(athlete.id, abierta.session.id, ejercicio.id, []);
+
+    const { athletes } = await routines.trainerCompliance(trainer.id);
+    assert.equal(athletes.length, 1, 'aparece el atleta vinculado');
+
+    const resumen = athletes[0];
+    assert.equal(resumen.athleteId, athlete.id);
+    assert.equal(resumen.routine.name, 'Semana de prueba');
+    assert.equal(resumen.routine.weeks, 6);
+    assert.equal(resumen.routine.currentWeek, semana);
+
+    /* La semana tiene cuatro franjas: dos de entrenamiento (Día 1 y Día 4),
+       una libre y una libre opcional. Los días libres no cuentan. */
+    assert.equal(resumen.routine.trainingDays, 2);
+
+    /* Solo se completó el Día 1. El Día 2, que también quedó cumplido, es
+       libre y no debe sumar. */
+    assert.equal(resumen.routine.completedDays, 1);
+  });
+
+  await t.test('el resumen no incluye atletas de otro entrenador', async () => {
+    const ajeno = await crearUsuario('trainer', '-ajeno');
+    try {
+      const { athletes } = await routines.trainerCompliance(ajeno.id);
+      assert.equal(athletes.length, 0);
+    } finally {
+      await pool.query('DELETE FROM users WHERE id=$1', [ajeno.id]);
+    }
   });
 
   await t.test('modificar la rutina conserva el progreso ya registrado', async () => {

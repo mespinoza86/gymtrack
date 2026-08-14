@@ -119,6 +119,8 @@ router.post(
   asyncHandler(controller.createRoutine),
 );
 router.get('/history', requireRole('athlete'), asyncHandler(controller.history));
+/* Antes de `/:id`, o Express tomaría "compliance" por un identificador. */
+router.get('/compliance', requireRole('trainer'), asyncHandler(controller.compliance));
 router.get('/:id', asyncHandler(controller.routine));
 router.put(
   '/:id',

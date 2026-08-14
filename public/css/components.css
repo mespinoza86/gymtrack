@@ -713,6 +713,71 @@ button.list-item.active { border-color: var(--brand); background: var(--brand-so
   border-top: 1px solid var(--line);
 }
 
+/* ---------- Mapa de cumplimiento del entrenador ---------- */
+
+.compliance {
+  margin: var(--sp-4) 0 var(--sp-5);
+  padding-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.compliance-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+
+.compliance-head h3 { margin: 0; }
+
+/* Una fila por semana y una columna por día. Las celdas son cuadradas y
+   estrechas para que un plan largo quepa sin desplazarse. */
+.heatmap { width: auto; }
+.heatmap th,
+.heatmap td { padding: 3px; text-align: center; border: 0; }
+
+.heatmap thead th,
+.heatmap tbody th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.heatmap tbody th { padding-right: var(--sp-2); }
+
+.heat {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  vertical-align: middle;
+}
+
+.heat.done { background: var(--brand); border-color: var(--brand); }
+.heat.partial { background: var(--brand-soft); border-color: var(--brand); }
+.heat.pending { background: var(--surface-2); border-color: var(--line-strong); }
+
+/* Un día libre sin registrar no es un incumplimiento: se apaga con un borde
+   discontinuo en vez de marcarse como pendiente. */
+.heat.rest { background: none; border-style: dashed; }
+
+.compliance-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: var(--sp-3) 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.compliance-legend .heat { width: 14px; height: 14px; margin-left: var(--sp-3); }
+.compliance-legend .heat:first-child { margin-left: 0; }
+
 /* ---------- Modal de video ---------- */
 
 .video-modal {

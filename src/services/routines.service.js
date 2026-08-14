@@ -79,6 +79,57 @@ export async function finishWorkout(athleteId, sessionId, input) {
   return assertWorkout(await repository.finishWorkout(athleteId, sessionId, input));
 }
 
+/* Resumen para el entrenador: cómo va esta semana cada uno de sus atletas.
+
+   La semana en curso se calcula aquí con `currentWeek`, la misma función que
+   usa el resto de la aplicación, en lugar de repetir la regla dentro del SQL.
+   Se cuentan solo los días de entrenamiento: incluir los días libres inflaría
+   el cumplimiento con jornadas en las que no había nada que hacer. */
+export async function trainerCompliance(trainerId) {
+  const rows = await repository.trainerAthleteRoutines(trainerId);
+
+  const conRutina = rows.filter((row) => row.routine_id);
+  const semanas = conRutina.map((row) =>
+    currentWeek({ start_date: row.start_date, weeks: row.weeks }),
+  );
+
+  const cumplidos = await repository.completedTrainingDays(
+    conRutina.map((row) => row.origin_id),
+    semanas,
+  );
+  const porClave = new Map(cumplidos.map((row) => [`${row.origin}-${row.week}`, row.completed]));
+
+  const athletes = rows
+    .map((row) => {
+      if (!row.routine_id) {
+        return {
+          athleteId: row.athlete_id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          routine: null,
+        };
+      }
+
+      const week = currentWeek({ start_date: row.start_date, weeks: row.weeks });
+      return {
+        athleteId: row.athlete_id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        routine: {
+          id: row.routine_id,
+          name: row.routine_name,
+          weeks: row.weeks,
+          currentWeek: week,
+          trainingDays: row.training_days,
+          completedDays: porClave.get(`${row.origin_id}-${week}`) ?? 0,
+        },
+      };
+    })
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+
+  return { athletes };
+}
+
 /* Cuadrícula de cumplimiento de una rutina: una entrada por semana y día.
 
    Puede haber más de una sesión en la misma franja —repetir un día es
