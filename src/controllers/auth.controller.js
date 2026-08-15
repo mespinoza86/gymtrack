@@ -1,5 +1,11 @@
 import * as auth from '../services/auth.service.js';
-import { issueCsrf } from '../middleware/csrf.js';
+import { issueCsrf, CSRF_COOKIE } from '../middleware/csrf.js';
+
+/* `regenerate` usa devolución de llamada; se envuelve para poder esperarla. */
+const regenerarSesion = (req) =>
+  new Promise((resolve, reject) =>
+    req.session.regenerate((error) => (error ? reject(error) : resolve())),
+  );
 
 export async function register(req, res) {
   /* No se abre sesión: la cuenta queda pendiente de confirmar el correo. */
@@ -34,16 +40,32 @@ export async function resendVerification(req, res) {
 
 export async function login(req, res) {
   const user = await auth.login(req.body.email, req.body.password);
+
+  /* Se renueva el identificador de sesión ANTES de guardar al usuario, para
+     cerrar la fijación de sesión: si alguien logró que la víctima usara un
+     identificador conocido de antemano, ese identificador queda inservible en
+     el momento en que ella entra, en vez de heredar su sesión autenticada.
+     `regenerate` deja una sesión vacía, así que el usuario se asigna después. */
+  await regenerarSesion(req);
   req.session.user = user;
+
   /* El token se entrega en la respuesta del propio acceso. Si se esperara al
      siguiente `attachCsrf`, la primera acción después de entrar se quedaría
-     sin cabecera. */
+     sin cabecera. Al nacer la sesión vacía, este token es nuevo: rota junto
+     con el identificador, que es justo lo que debe pasar al cambiar de
+     privilegios. */
   issueCsrf(req, res);
   res.json({ user });
 }
 
 export function logout(req, res, next) {
-  req.session.destroy((error) => (error ? next(error) : res.status(204).end()));
+  req.session.destroy((error) => {
+    if (error) return next(error);
+    /* La cookie del token pierde su sentido al morir la sesión que la
+       respaldaba; dejarla puesta solo confundiría al depurar. */
+    res.clearCookie(CSRF_COOKIE, { path: '/' });
+    res.status(204).end();
+  });
 }
 
 export async function me(req, res) {

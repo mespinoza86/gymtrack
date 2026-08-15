@@ -12,13 +12,29 @@ import { attachCsrf, verifyCsrf, issueCsrf, CSRF_COOKIE } from '../src/middlewar
    el envío de cookies. */
 function contexto({ method = 'POST', user = null, header = null, token = null } = {}) {
   const cookies = [];
+  const cabeceras = {};
   const req = {
     method,
     session: user ? { user, ...(token ? { csrfToken: token } : {}) } : {},
     get: (name) => (name.toLowerCase() === 'x-csrf-token' ? header : undefined),
   };
-  const res = { cookie: (nombre, valor, opciones) => cookies.push({ nombre, valor, opciones }) };
-  return { req, res, cookies };
+
+  /* Se imita el comportamiento real de Express: `cookie()` **acumula** en la
+     cabecera `Set-Cookie` en lugar de reemplazarla. Sin eso no se podría
+     comprobar que no salgan dos valores de la misma cookie. */
+  const res = {
+    getHeader: (nombre) => cabeceras[nombre],
+    setHeader: (nombre, valor) => {
+      cabeceras[nombre] = valor;
+    },
+    cookie: (nombre, valor, opciones) => {
+      cookies.push({ nombre, valor, opciones });
+      cabeceras['Set-Cookie'] = [...[].concat(cabeceras['Set-Cookie'] ?? []), `${nombre}=${valor}`];
+    },
+  };
+
+  const puestas = () => [].concat(cabeceras['Set-Cookie'] ?? []);
+  return { req, res, cookies, puestas };
 }
 
 function correr(middleware, { req, res }) {
@@ -100,6 +116,24 @@ test('el token se conserva mientras dure la sesión y es distinto en cada una', 
 
   const otra = contexto({ method: 'GET', user: { id: 'v' } });
   assert.notEqual(issueCsrf(otra.req, otra.res), primero);
+});
+
+test('al regenerar la sesión no salen dos valores de la misma cookie', () => {
+  /* Reproduce lo que ocurre al entrar: `attachCsrf` emite el token de la
+     sesión anterior y después el controlador la regenera y emite el nuevo.
+     La respuesta debe llevar un único valor, el bueno; con dos, el resultado
+     dependería del orden en que el navegador los aplique. */
+  const ctx = contexto({ method: 'POST', user: { id: 'u' }, token: 'viejo' });
+  const anterior = issueCsrf(ctx.req, ctx.res);
+  assert.equal(anterior, 'viejo');
+
+  ctx.req.session = { user: { id: 'u' } }; // Sesión regenerada: nace vacía.
+  const nuevo = issueCsrf(ctx.req, ctx.res);
+  assert.notEqual(nuevo, anterior, 'el token debe rotar con la sesión');
+
+  const delToken = ctx.puestas().filter((c) => c.startsWith(`${CSRF_COOKIE}=`));
+  assert.equal(delToken.length, 1, 'solo debe quedar una cabecera de esta cookie');
+  assert.equal(delToken[0], `${CSRF_COOKIE}=${nuevo}`);
 });
 
 test('la protección está conectada y en el orden correcto', async () => {

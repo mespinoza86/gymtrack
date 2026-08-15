@@ -41,6 +41,16 @@ export function issueCsrf(req, res) {
   if (!req.session) return null;
   req.session.csrfToken ??= crypto.randomBytes(32).toString('hex');
 
+  /* Se retira cualquier cabecera previa de esta misma cookie antes de poner la
+     nueva. Hace falta en el acceso: `attachCsrf` ya emitió el token de la
+     sesión anterior y después el controlador la regenera y emite el de la
+     nueva, así que la respuesta saldría con dos valores distintos. Un
+     navegador aplica el último y acaba con el correcto, pero depender de ese
+     orden es frágil y despista al depurar. */
+  const previas = [].concat(res.getHeader('Set-Cookie') ?? []);
+  const ajenas = previas.filter((cookie) => !String(cookie).startsWith(`${CSRF_COOKIE}=`));
+  if (ajenas.length !== previas.length) res.setHeader('Set-Cookie', ajenas);
+
   res.cookie(CSRF_COOKIE, req.session.csrfToken, {
     httpOnly: false,
     sameSite: 'lax',

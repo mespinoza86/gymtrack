@@ -1933,6 +1933,36 @@ En el navegador la cabecera se añade en `public/js/comun/api.js` y solo en los 
 
 **Un error propio digno de anotar.** Una comprobación buscaba el nombre de la cookie con `/gymtrack\\?\.csrf/` y se «limpió» a `/gymtrack\.csrf/`, lo que la hizo fallar: en el código el nombre vive dentro de una expresión regular, donde el punto va escapado como `gymtrack\.csrf`. La barra invertida opcional no sobraba. Queda documentado en el propio archivo para que no se vuelva a simplificar.
 
-#### Hallazgo no corregido: fijación de sesión
+#### Verificación del CSRF en producción
 
-Al revisar el flujo de acceso se observó que `login` asigna `req.session.user` **sin regenerar el identificador de sesión**. Eso deja abierta la fijación de sesión: quien consiga que una víctima use un identificador conocido de antemano conservaría el acceso después de que esa persona entre. La corrección es llamar a `req.session.regenerate()` antes de guardar el usuario y volver a emitir el token de CSRF a continuación. **No se aplicó** para no mezclarlo con este bloque y porque toca el camino más crítico de la aplicación; queda anotado como el siguiente punto de seguridad.
+El usuario publicó el bloque en Render (commit `1100ad3`) y comprobó a mano que la aplicación seguía funcionando. Antes de darlo por bueno se verificó que lo probado fuera realmente el código nuevo y no el anterior: se descargó `https://gymtrack-24fc.onrender.com/js/comun/api.js` y se confirmó que **el archivo publicado ya contiene la lectura de la cookie y el envío de la cabecera**. La comprobación manual, por tanto, era válida.
+
+Después se ejecutó la misma comprobación automática de extremo a extremo, esta vez **apuntando al sitio público** en lugar de a localhost. Los doce controles pasaron: el acceso entrega ambas cookies, la del token no es `httpOnly` y mide 64 caracteres, una lectura no necesita token, **una escritura sin cabecera se rechaza con 403 y código `csrf_invalid`**, una con token equivocado también, una con el token correcto se acepta, y se puede entrar sin token previo. El usuario temporal se creó y se eliminó, comprobando el recuento.
+
+Queda así confirmado que la protección funciona sobre HTTPS y detrás del proxy de Render, donde la cookie viaja además con el atributo `secure`, condiciones que no se dan en el entorno local.
+
+#### Hallazgo detectado: fijación de sesión
+
+Al revisar el flujo de acceso se observó que `login` asignaba `req.session.user` **sin regenerar el identificador de sesión**. Eso dejaba abierta la fijación de sesión: quien consiguiera que una víctima usara un identificador conocido de antemano conservaría el acceso después de que esa persona entrara. Se anotó sin corregir para no mezclarlo con el bloque de CSRF, y se abordó justo después.
+
+### Cierre de la fijación de sesión
+
+**La corrección.** `login` llama ahora a `req.session.regenerate()` **antes** de guardar al usuario. El orden importa por dos motivos a la vez: invertirlo no solo dejaría la protección sin efecto, sino que además **borraría al usuario recién asignado**, porque `regenerate` deja una sesión vacía. Como esa sesión nace sin token, el de CSRF se emite después y **rota junto con el identificador**, que es lo que debe ocurrir en un cambio de privilegios.
+
+Se aprovechó para que `logout` retire también la cookie del token, que pierde su sentido al morir la sesión que la respaldaba.
+
+#### Un defecto encontrado por la propia comprobación
+
+La verificación por HTTP reveló algo que ninguna prueba unitaria habría visto. Al volver a entrar teniendo ya sesión, el identificador cambiaba correctamente, pero el token de CSRF **parecía no rotar**.
+
+La causa: en esa petición, `attachCsrf` emite el token de la sesión **anterior** y a continuación el controlador la regenera y emite el de la **nueva**, de modo que la respuesta salía con **dos cabeceras `Set-Cookie` en conflicto para la misma cookie**. Un navegador aplica la última y acaba con el valor correcto —por eso habría pasado inadvertido—, pero depender de ese orden es frágil y despista a cualquier cliente que no sea un navegador.
+
+Se corrigió en `issueCsrf`, que ahora **retira las cabeceras previas de esa cookie antes de poner la nueva**. Hay una prueba unitaria que reproduce la secuencia del acceso y exige que quede una sola cabecera, con el valor nuevo.
+
+#### Verificaciones
+
+- `test/session-security.test.js`, cuatro pruebas de contrato: que se regenere la sesión, que el usuario se guarde **después** de regenerar, que el token se emita sobre la sesión ya renovada y que al salir se retire su cookie. Son de contrato porque el comportamiento real depende de `express-session` y necesita un servidor.
+- La comprobación por HTTP se amplió de 12 a **17 controles**, todos correctos. Los cinco nuevos: se puede volver a entrar teniendo sesión, el acceso entrega una sesión nueva, **el identificador cambia al entrar**, **el token de CSRF también rota**, y **la sesión anterior queda invalidada** —al usarla se recibe 401—.
+- **La suite pasó de 83 a 88 pruebas**, todas aprobadas, sin usuarios ni sesiones temporales restantes.
+
+Con esto quedan cerradas todas las deudas de seguridad registradas desde la revisión del 12 de agosto.
