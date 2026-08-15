@@ -99,6 +99,52 @@ En pgAdmin, haz clic derecho sobre `gymtrack` y utiliza **Backup**. El formato C
 
 El navegador nunca recibe la contraseña de PostgreSQL ni ejecuta SQL. Todas las solicitudes pasan por la API, sus validaciones y sus comprobaciones de permisos.
 
+## Correo electrónico
+
+La aplicación envía dos correos: el de **confirmación de cuenta** y el de **recuperación de contraseña**. Desde la migración `005`, una cuenta recién creada no puede iniciar sesión hasta confirmar su dirección.
+
+### En desarrollo no hace falta configurar nada
+
+Con `MAIL_TRANSPORT=console` (el valor predeterminado) el correo **no se envía**: se escribe completo en la terminal, con su enlace. Basta con copiar el enlace desde ahí. Las pruebas automatizadas funcionan así y no necesitan credenciales.
+
+### En producción (Brevo)
+
+1. Crear una cuenta gratuita en Brevo.
+2. En **Senders, Domains & Dedicated IPs**, añadir una dirección de remitente y confirmarla desde el correo que llega.
+3. En **SMTP & API**, generar una clave de API.
+4. En Render, configurar estas variables:
+
+   | Variable | Valor |
+   |---|---|
+   | `MAIL_TRANSPORT` | `brevo` |
+   | `MAIL_API_KEY` | La clave de API (secreta) |
+   | `MAIL_FROM` | La dirección verificada en el paso 2 |
+   | `MAIL_FROM_NAME` | `GymTrack` |
+   | `APP_ORIGIN` | La URL pública real; **los enlaces del correo se construyen con ella** |
+
+Sin dominio propio, los correos llegan con más frecuencia a la carpeta de correo no deseado.
+
+### El día que exista un dominio propio: pasar a Resend
+
+El transporte de Resend **ya está programado** en `src/services/mail.service.js`. Cuando tengas dominio:
+
+1. Añade el dominio en Resend y copia los registros DNS que te da (DKIM y SPF) en tu registrador.
+2. Espera la propagación y verifícalo en Resend.
+3. Genera una clave de API.
+4. En Render cambia solo tres valores: `MAIL_TRANSPORT=resend`, `MAIL_API_KEY` y `MAIL_FROM` con una dirección del dominio (por ejemplo `no-responder@tudominio.com`).
+
+No hay que desplegar código ni ejecutar migraciones. Si además mueves la aplicación al dominio nuevo, actualiza `APP_ORIGIN`, porque los enlaces de los correos se construyen con esa variable.
+
+> Si `MAIL_TRANSPORT` no se configura en producción, la aplicación **arranca igual** y avisa en el registro. Se prefirió eso a que un despliegue sin credenciales tumbara el sitio entero.
+
+### Si alguien no recibe el correo
+
+Mientras no exista un panel de administración, esta es la salida manual. Con acceso a la base de datos, confirma la cuenta a mano:
+
+```sql
+UPDATE users SET email_verified_at = NOW() WHERE email = 'persona@ejemplo.com';
+```
+
 ## Seguridad antes de producción
 
 - Usar HTTPS.

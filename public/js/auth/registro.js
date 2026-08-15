@@ -1,5 +1,4 @@
 import { api, formData, showMessage } from '../comun/api.js';
-import { homeFor } from '../comun/auth.js';
 import { initializePasswordToggles } from '../comun/password-toggle.js';
 import { themeButton } from '../comun/theme.js';
 
@@ -22,11 +21,27 @@ document.querySelector('#register').onsubmit = async (event) => {
   delete data.confirmPassword;
 
   try {
-    const { user } = await api('/api/auth/register', {
+    const { emailSent } = await api('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    location.href = homeFor(user.role);
+
+    /* Ya no se entra directamente: la cuenta queda pendiente de confirmar el
+       correo. Si el envío falló, se dice y se ofrece el reenvío, porque de lo
+       contrario la persona esperaría un mensaje que nunca va a llegar. */
+    showMessage(
+      message,
+      emailSent
+        ? 'Cuenta creada. Te enviamos un correo para confirmarla; revisa también la carpeta de correo no deseado.'
+        : 'Cuenta creada, pero no pudimos enviar el correo de confirmación. Solicita el reenvío para poder entrar.',
+      emailSent ? 'success' : 'error',
+    );
+    event.target.hidden = true;
+
+    const link = document.createElement('a');
+    link.href = `/verificar-correo.html?email=${encodeURIComponent(data.email ?? '')}`;
+    link.textContent = 'Confirmar o reenviar el correo';
+    message.append(document.createElement('br'), link);
   } catch (error) {
     showMessage(message, error.message, 'error');
   }

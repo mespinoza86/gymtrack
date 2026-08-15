@@ -14,7 +14,9 @@ export function errorHandler(error, req, res, next) {
   }
   const status = error.status ?? 500;
   if (status >= 500) console.error(error);
-  return res
-    .status(status)
-    .json({ error: status >= 500 ? 'Error interno del servidor' : error.message });
+  return res.status(status).json({
+    error: status >= 500 ? 'Error interno del servidor' : error.message,
+    /* Solo se expone en errores previstos; un fallo interno no describe nada. */
+    ...(status < 500 && error.code ? { code: error.code } : {}),
+  });
 }

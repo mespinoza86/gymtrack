@@ -1726,3 +1726,98 @@ Se añadió `createUnlessUnread` al repositorio, que agrupa **solo mientras el a
 El documento supera las 1.700 líneas y crece de forma lineal, así que recuperar el contexto obliga a leerlo casi entero. Se propuso añadir arriba una sección **«Estado actual»** reescrita en cada sesión con la verdad vigente, dejando debajo el historial cronológico intacto. Queda pendiente de decisión del usuario.
 
 **Pendiente inmediato.** Confirmación visual de las fases 1, 2 y 3 en el navegador, y publicar en Render, que no recibe nada desde `1c91e86`.
+
+### Publicación en Render y cierre del bloque de cuatro fases
+
+El usuario completó la revisión visual de las fases 1, 2 y 3 y **publicó todo en Render**, confirmando que la aplicación se ve y funciona correctamente en producción. Con eso queda resuelta la cadena de despliegue que llevaba pendiente desde el 11 de agosto: ya no hay trabajo terminado que siga sin publicar.
+
+### Decisión: las fotos de progreso pasan al backlog
+
+La cuarta y última fase del bloque acordado —**fotografías de progreso**— queda **aplazada de forma consciente**, no olvidada. El usuario prefiere abordar antes el correo electrónico.
+
+Motivo de la decisión: es la única fase que no puede resolverse dentro del proyecto. Exige elegir y contratar un proveedor de almacenamiento de objetos externo, porque el disco de Render se borra en cada despliegue, y además implica datos corporales que requieren un control de acceso más cuidadoso que el resto de la aplicación. Es una decisión de infraestructura y de privacidad, no de programación.
+
+Lo que ya existe y seguirá esperando: la tabla de fotos desde `001_initial_schema.sql`, la dependencia `multer` declarada en `package.json` sin usarse, y la variable `MAX_UPLOAD_MB` ya presente en la configuración de entorno. Cuando se retome, nada de eso hay que rehacerlo.
+
+### Siguiente bloque acordado: correo electrónico
+
+El usuario pidió abordar **recuperación de contraseña y confirmación de la dirección de correo**, sabiendo que la aplicación ya está publicada en Render. Es la carencia más grave que queda para usar el producto con personas reales: hoy, quien olvida su contraseña no tiene ninguna vía de recuperación, y nadie comprueba que la dirección registrada exista o pertenezca a quien se registra.
+
+#### Decisiones del usuario
+
+Se le explicó que la restricción que manda sobre todo lo demás es el **dominio**: para enviar correo a direcciones ajenas con buena entregabilidad hacen falta registros DNS (SPF, DKIM, DMARC) sobre un dominio propio, y `onrender.com` no lo es.
+
+1. **Proveedor: Brevo, sin dominio propio de momento**, porque permite verificar una única dirección de remitente en lugar de un dominio entero. El usuario pidió expresamente dejar preparado el cambio futuro a **Resend con dominio propio**, así que todo el contacto con el proveedor se aisló en un módulo.
+2. **Verificación bloqueante**: quien no confirma su correo no entra. Se le advirtió que combinar bloqueo con la entregabilidad mediocre de un remitente sin dominio es justo la mezcla arriesgada, porque un correo que cae en spam deja a la persona fuera sin remedio. Mantuvo la decisión, así que se construyeron tres salidas de emergencia en lugar de discutirla.
+
+#### Las tres salidas de emergencia
+
+1. La migración **marca como verificadas todas las cuentas que ya existían**. Se comprobó después en Neon que las dos cuentas reales quedaron con `verificado=true`, así que activar el bloqueo no deja fuera a nadie.
+2. El login de una cuenta sin confirmar responde con un texto explícito y un **código de error propio**, y la pantalla añade un enlace de reenvío con el correo ya escrito. Un error genérico habría dejado a la persona sin saber qué hacer.
+3. El `README.md` documenta la **sentencia SQL para confirmar una cuenta a mano**. Sin panel de administración, es la única llave cuando el correo no llega.
+
+#### Implementación
+
+**Migración `005_email_verification.sql`**, aplicada en Neon y verificada: `users.email_verified_at` con el relleno anterior, y la tabla `auth_tokens` con propietario, propósito (`password_reset` o `email_verify`), hash del token, vencimiento, uso y fecha. Una sola tabla para los dos flujos porque la mecánica es idéntica. Índice único sobre el hash e índice parcial de los pendientes por usuario.
+
+**Del token solo se guarda su SHA-256.** El valor en claro existe únicamente dentro de la función que lo emite y del enlace del correo. Una filtración de la base no entrega la capacidad de restablecer contraseñas ajenas, que importa especialmente estando la base en un plan gratuito alojado.
+
+**`src/services/mail.service.js`,** el módulo aislado, con dos transportes: `console`, que escribe el correo en la terminal sin enviarlo y es el predeterminado, y `brevo`, que envía por su API HTTP con `fetch` nativo, sin dependencia nueva. Exporta además un `outbox` en memoria, necesario porque del token solo queda el hash: sin él ni las pruebas ni quien desarrolla podrían recuperar el enlace.
+
+**Decisiones de seguridad tomadas al implementar:**
+
+- `forgot-password` y `resend-verification` **responden siempre lo mismo exista o no la cuenta**. Si distinguieran, se convertirían en un detector de qué correos están registrados en una aplicación de salud.
+- La comprobación de correo sin confirmar va **después** de validar la contraseña, por el mismo motivo: avisar antes revelaría que la cuenta existe.
+- Emitir un enlace nuevo **anula los anteriores** del mismo propósito, para que un correo viejo reenviado no siga abriendo la cuenta.
+- Restablecer la contraseña **cierra todas las sesiones abiertas** del usuario. Si el motivo del cambio fue que alguien entró a la cuenta, su sesión no puede sobrevivir.
+- Restablecer **también deja el correo confirmado**, porque quien abrió el enlace demostró controlar el buzón. Evita que alguien recupere su contraseña y siga sin poder entrar.
+- **Límite propio de 5 por hora** en los dos endpoints que envían correo, mucho más estricto que el general de 50 cada 15 minutos de `/api/auth`: son a la vez un vector de abuso contra terceros y un gasto de la cuota diaria del proveedor.
+- El correo **no se valida de forma que impida arrancar**. Un despliegue sin credenciales deja la aplicación en pie con el envío desactivado y un aviso ruidoso, en vez de tumbar el sitio entero por una función secundaria. Se tuvo presente el incidente del 9 de agosto, cuando la longitud de `SESSION_SECRET` sí impidió arrancar.
+
+**Registrarse ya no abre sesión**, puesto que entrar sin confirmar es justo lo que se decidió impedir. Si además falla el envío, la pantalla lo dice y ofrece el reenvío en lugar de dejar a la persona esperando un correo que no va a llegar.
+
+**Pantallas nuevas:** `recuperar-clave.html`, `nueva-clave.html` y `verificar-correo.html`, con sus tres módulos. La de verificación confirma sola al abrirse y, si el enlace venció, descubre el formulario de reenvío en el mismo sitio. `index.html` incorpora el enlace de contraseña olvidada. `HttpError` y el manejador de errores admiten ahora un `code` opcional que llega hasta el navegador, y `api.js` lo conserva.
+
+#### Verificaciones
+
+- **La suite pasó de 42 a 58 pruebas, todas aprobadas.** Se añadieron `test/email-auth.test.js` con 11 pruebas contra PostgreSQL y `test/email-contract.test.js` con 5 puras.
+- La prueba con base de datos cubre: la cuenta nace sin confirmar, el bloqueo con su código, que una contraseña incorrecta devuelve 401 genérico y no delata la cuenta, el rechazo de un token inventado, la confirmación por el enlace, el uso único, que un correo desconocido no envía nada, que emitir un enlace nuevo anula el anterior, el cierre de sesiones al restablecer —insertando una sesión con la forma real de `connect-pg-simple` y comprobando que desaparece—, que restablecer confirma el correo, y que no se reenvía a una cuenta ya confirmada.
+- La prueba pura comprueba el montaje de las cuatro rutas, que solo las dos que envían lleven el límite, que el proveedor esté aislado —el servicio de autenticación **no debe mencionar a Brevo**—, que el token se guarde como hash y que no exista columna en claro, y el contrato de las tres pantallas.
+- **Regresión encontrada y corregida:** `test/change-password.test.js` fallaba porque creaba su usuario con el repositorio y luego iniciaba sesión; desde ahora esa cuenta nace sin confirmar. Se corrigió marcándola verificada en la propia prueba, ya que su asunto es el cambio de contraseña y no la confirmación.
+- Antes de escribir se confirmó el destino de `DATABASE_URL`: sigue siendo Neon. Al terminar, `usuarios_temporales_restantes = 0`, `tokens_restantes = 0` y `sesiones_de_prueba_restantes = 0`.
+- `npm.cmd run format` aplicado y la aplicación completa se importa sin errores.
+
+#### Pendiente de este bloque
+
+1. **Crear la cuenta de Brevo**, verificar una dirección de remitente, generar la clave de API y configurar `MAIL_TRANSPORT`, `MAIL_API_KEY`, `MAIL_FROM` y `MAIL_FROM_NAME` en Render. El procedimiento está en `README.md`. Mientras no se haga, en producción no saldrá ningún correo y **nadie que se registre podrá entrar**.
+2. Comprobar que `APP_ORIGIN` en Render sea la URL pública real: los enlaces de los correos se construyen con ella.
+3. Revisión visual local de las tres pantallas, leyendo el enlace desde la terminal gracias al transporte de consola.
+4. Publicar en Render. La migración `005` ya está aplicada.
+5. Prueba real de extremo a extremo con una dirección de correo verdadera, revisando también la carpeta de correo no deseado.
+
+#### Migración futura a Resend con dominio propio: ya está escrita
+
+El usuario preguntó qué costaría pasarse a Resend el día que tenga dominio y pidió dejar **el transporte ya programado y el procedimiento documentado aquí**, para no tener que reconstruir el contexto en el futuro.
+
+**El código ya está hecho.** `src/services/mail.service.js` contiene los tres transportes: `console`, `brevo` y `resend`. El de Resend usa `https://api.resend.com/emails` con autenticación `Bearer` y `fetch` nativo, sin dependencia nueva. Está escrito y verificado por las pruebas de contrato, simplemente no se usa mientras `MAIL_TRANSPORT` no valga `resend`.
+
+**Por qué las variables se llaman `MAIL_*` y no `BREVO_*`.** Fue deliberado: `MAIL_TRANSPORT`, `MAIL_API_KEY`, `MAIL_FROM` y `MAIL_FROM_NAME` sirven igual para cualquier proveedor. Existe una prueba de contrato que falla si alguien introduce una variable con nombre de proveedor, precisamente para que migrar nunca deje de ser cambiar valores.
+
+**El día de la migración, el procedimiento completo es:**
+
+1. Registrar el dominio.
+2. Crear la cuenta en Resend y añadir el dominio en su apartado *Domains*.
+3. Copiar los registros DNS que Resend entrega ya redactados —DKIM y SPF, y conviene añadir DMARC— en el panel del registrador del dominio.
+4. Esperar la propagación, de minutos a unas horas, y pulsar verificar en Resend.
+5. Generar una clave de API en Resend.
+6. En Render, cambiar únicamente tres valores: `MAIL_TRANSPORT=resend`, `MAIL_API_KEY` con la clave nueva y `MAIL_FROM` con una dirección del dominio verificado, por ejemplo `no-responder@eldominio.com`.
+7. **No hace falta desplegar código ni ejecutar migraciones.** Basta con reiniciar el servicio para que tome las variables.
+
+**Detalles que conviene recordar y que no son evidentes:**
+
+- Si además se mueve la aplicación al dominio nuevo, hay que cambiar **`APP_ORIGIN`**: los enlaces de los correos se construyen con esa variable, y si se queda apuntando a `onrender.com` los correos llevarán la dirección vieja aunque el envío funcione.
+- Las cuentas ya confirmadas siguen confirmadas y los tokens emitidos siguen valiendo: nada de eso depende del proveedor.
+- Si se decide **eliminar** el transporte de Brevo al migrar, hay que actualizar `test/email-contract.test.js`, que comprueba que ambos proveedores vivan en el módulo de correo. Si se conservan los dos, no hay que tocar nada.
+- El fallo habitual justo después de migrar es que Resend responda que el dominio todavía no está verificado; por eso su transporte incluye el cuerpo del error del proveedor en el mensaje.
+
+**Un falso positivo encontrado al escribir las pruebas.** La comprobación de aislamiento afirmaba que el servicio de autenticación no debía mencionar `brevo|resend`, y falló: el servicio tiene una función `resendVerification`, que significa reenviar la confirmación y no tiene relación con el proveedor Resend. Se afinó la comprobación para mirar los servidores (`api.brevo.com`, `api.resend.com`) en lugar de los nombres sueltos. Queda anotado porque volvería a aparecer si alguien endurece esa prueba sin conocer el motivo.

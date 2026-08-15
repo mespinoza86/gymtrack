@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0c2a1d">
+  <title>GymTrack | Nueva contraseña</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <main class="auth-layout">
+    <section class="auth-art">
+      <div class="logo">
+        <span class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 9v6" /><path d="M7 6.5v11" /><path d="M17 6.5v11" /><path d="M20 9v6" /><path d="M7 12h10" />
+          </svg>
+        </span>Gym<span>Track</span>
+      </div>
+      <h1>Elige tu contraseña nueva.</h1>
+      <p>Al guardarla se cerrarán todas las sesiones abiertas de tu cuenta, incluida cualquiera que no reconozcas.</p>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <h2>Nueva contraseña</h2>
+        <p class="muted">Debe tener al menos 8 caracteres, una mayúscula y un número.</p>
+        <div id="message" hidden></div>
+
+        <form id="reset">
+          <div class="field">
+            <label for="password">Nueva contraseña</label>
+            <input id="password" name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label for="confirmPassword">Confirmar nueva contraseña</label>
+            <input id="confirmPassword" name="confirmPassword" type="password" required minlength="8" maxlength="72" autocomplete="new-password">
+          </div>
+          <button class="btn" type="submit">Guardar contraseña</button>
+        </form>
+
+        <p class="auth-foot"><a href="/index.html">Volver a iniciar sesión</a></p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/auth/nueva-clave.js"></script>
+</body>
+
+</html>

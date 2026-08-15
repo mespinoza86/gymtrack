@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0c2a1d">
+  <title>GymTrack | Recuperar contraseña</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <main class="auth-layout">
+    <section class="auth-art">
+      <div class="logo">
+        <span class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 9v6" /><path d="M7 6.5v11" /><path d="M17 6.5v11" /><path d="M20 9v6" /><path d="M7 12h10" />
+          </svg>
+        </span>Gym<span>Track</span>
+      </div>
+      <h1>Te enviamos un enlace para volver a entrar.</h1>
+      <p>Escribe el correo con el que creaste tu cuenta y recibirás instrucciones para elegir una contraseña nueva.</p>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <h2>Recuperar contraseña</h2>
+        <p class="muted">Te mandaremos un enlace válido por poco tiempo y de un solo uso.</p>
+        <div id="message" hidden></div>
+
+        <form id="forgot">
+          <div class="field">
+            <label for="email">Correo electrónico</label>
+            <input id="email" name="email" type="email" required autocomplete="email" placeholder="tu@correo.com">
+          </div>
+          <button class="btn" type="submit">Enviar enlace</button>
+        </form>
+
+        <p class="auth-foot"><a href="/index.html">Volver a iniciar sesión</a></p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/auth/recuperar-clave.js"></script>
+</body>
+
+</html>

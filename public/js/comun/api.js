@@ -6,7 +6,14 @@ export async function api(path, options = {}) {
   });
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'No se pudo completar la solicitud');
+  if (!response.ok) {
+    const error = new Error(data.error || 'No se pudo completar la solicitud');
+    /* Algunos errores previstos traen un código para que la pantalla pueda
+       reaccionar y no solo mostrar el texto, como el correo sin confirmar. */
+    error.code = data.code;
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 export function formData(form) {

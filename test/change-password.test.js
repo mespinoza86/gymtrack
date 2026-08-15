@@ -16,6 +16,11 @@ test('cambia la contraseña solo con la contraseña actual correcta', async (t) 
     role: 'athlete',
   });
 
+  /* Desde la migración 005 una cuenta nace sin confirmar y el acceso queda
+     bloqueado hasta que se confirma. Esta prueba trata del cambio de
+     contraseña, no de la confirmación, así que se da por verificada. */
+  await users.markEmailVerified(user.id);
+
   t.after(async () => {
     const found = (await pool.query('SELECT email FROM users WHERE id = $1', [user.id])).rows[0];
     assert.equal(found?.email, email);
