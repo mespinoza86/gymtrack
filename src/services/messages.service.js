@@ -2,6 +2,7 @@ import * as repo from '../repositories/messages.repository.js';
 import { HttpError } from '../utils/http-error.js';
 import * as notifications from './notifications.service.js';
 export const conversations = repo.conversations;
+export const unreadCount = repo.unreadCount;
 async function access(id, userId) {
   if (!(await repo.canAccess(id, userId)))
     throw new HttpError(403, 'No perteneces a esta conversación');

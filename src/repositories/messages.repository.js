@@ -38,6 +38,22 @@ export async function conversations(user) {
   return rows;
 }
 
+/* Mensajes sin leer de todas las conversaciones de una persona. Los propios se
+   excluyen con `sender_id <> $1`: nadie tiene pendiente lo que escribió él. */
+export async function unreadCount(userId) {
+  return (
+    await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+        WHERE (c.trainer_id = $1 OR c.athlete_id = $1)
+          AND m.sender_id <> $1
+          AND m.read_at IS NULL`,
+      [userId],
+    )
+  ).rows[0].total;
+}
+
 /* Comprobación de permiso: solo las dos personas de la conversación
    pueden leerla o escribir en ella. */
 export async function canAccess(id, userId) {

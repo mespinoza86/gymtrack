@@ -1,4 +1,5 @@
 import * as repository from '../repositories/notifications.repository.js';
+import { emitToUser } from '../sockets/emitter.js';
 import { HttpError } from '../utils/http-error.js';
 
 /* Crear un aviso siempre es un efecto secundario de una operación que ya se
@@ -12,7 +13,14 @@ import { HttpError } from '../utils/http-error.js';
 function sideEffect(name, run) {
   return async (input) => {
     try {
-      return await run(input);
+      const notification = await run(input);
+
+      /* Solo se avisa por socket si de verdad se creó una fila. Las variantes
+         idempotentes no devuelven nada cuando deciden no repetir el aviso, y
+         entonces tampoco hay novedad que anunciar. */
+      if (notification) emitToUser(input.userId, 'notification:new', { notification });
+
+      return notification;
     } catch (error) {
       console.error(`[notificaciones] ${name} falló para "${input?.type}":`, error.message);
       return null;

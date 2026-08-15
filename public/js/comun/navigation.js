@@ -3,6 +3,7 @@ import { escapeHtml } from './dom.js';
 import { icon } from './icons.js';
 import { themeButton } from './theme.js';
 import { api } from './api.js';
+import { socket } from './socket.js';
 
 /* Cada entrada es [etiqueta, dirección, icono]. Las marcadas en
    `tabs` son las que aparecen en la barra inferior del celular;
@@ -56,24 +57,90 @@ function initials(user) {
   return `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || '·';
 }
 
-function countMarkup(count, className = 'nav-count') {
+function countMarkup(count, className = 'nav-count', etiqueta = 'notificaciones pendientes') {
   if (!count) return '';
-  return `<span class="${className}" aria-label="${count} notificaciones pendientes">${count > 99 ? '99+' : count}</span>`;
+  return `<span class="${className}" aria-label="${count} ${etiqueta}">${count > 99 ? '99+' : count}</span>`;
 }
 
-function navLinks(links, unread) {
+const NOTIFICACIONES = '/compartido/notificaciones.html';
+const MENSAJES = '/compartido/mensajes.html';
+
+/* Pinta o retira un contador dentro de los elementos indicados, sin volver a
+   dibujar la navegación entera.
+
+   Tiene que poder CREAR el elemento, no solo cambiarlo: cuando la página se
+   carga sin nada pendiente, `countMarkup` no genera nada y no hay ningún
+   contador al que cambiarle el texto. */
+function pintarContador(destinos, count, etiqueta) {
+  for (const [contenedor, clase] of destinos) {
+    if (!contenedor) continue;
+    let badge = contenedor.querySelector(`.${clase}`);
+
+    if (!count) {
+      badge?.remove();
+      continue;
+    }
+
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = clase;
+      contenedor.append(badge);
+    }
+
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.setAttribute('aria-label', `${count} ${etiqueta}`);
+  }
+}
+
+/* Avisos pendientes: menú lateral y botón "Más" de la barra inferior, que es
+   donde vive la bandeja en móvil. */
+export function setUnreadBadges(count) {
+  pintarContador(
+    [
+      [document.querySelector(`[data-sidebar] a[href="${NOTIFICACIONES}"]`), 'nav-count'],
+      [document.querySelector('#more-tab'), 'tab-count'],
+    ],
+    count,
+    'notificaciones pendientes',
+  );
+}
+
+/* Mensajes sin leer. A diferencia de los avisos, "Mensajes" sí tiene su propio
+   acceso en la barra inferior, así que el contador va sobre él y no sobre
+   "Más". Sin esto, un mensaje nuevo solo se anunciaba junto a Notificaciones y
+   había que abrir la bandeja para descubrir que era un mensaje. */
+export function setMessageBadges(count) {
+  pintarContador(
+    [
+      [document.querySelector(`[data-sidebar] a[href="${MENSAJES}"]`), 'nav-count'],
+      [document.querySelector(`.bottom-nav a[href="${MENSAJES}"]`), 'tab-count'],
+    ],
+    count,
+    'mensajes sin leer',
+  );
+}
+
+/* `counts` lleva los dos contadores: avisos pendientes y mensajes sin leer.
+   Cada enlace recibe el suyo, si le corresponde alguno. */
+function badgeFor(url, counts) {
+  if (url === NOTIFICACIONES) return countMarkup(counts.notifications);
+  if (url === MENSAJES) return countMarkup(counts.messages, 'nav-count', 'mensajes sin leer');
+  return '';
+}
+
+function navLinks(links, counts) {
   return links
     .map(
       ([label, url, name]) =>
-        `<a class="nav-link${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span>${url === '/compartido/notificaciones.html' ? countMarkup(unread) : ''}</a>`,
+        `<a class="nav-link${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span>${badgeFor(url, counts)}</a>`,
     )
     .join('');
 }
 
-function fillSidebar(sidebar, user, menu, unread) {
+function fillSidebar(sidebar, user, menu, counts) {
   sidebar.innerHTML = `
     <div class="logo">${brand}</div>
-    <nav aria-label="Secciones">${navLinks(menu.links, unread)}</nav>
+    <nav aria-label="Secciones">${navLinks(menu.links, counts)}</nav>
     <div class="sidebar-footer">
       <div class="user-chip">
         <span class="avatar">${escapeHtml(initials(user))}</span>
@@ -116,7 +183,7 @@ function buildTopbar(openDrawer) {
 
 /* Barra inferior con los accesos frecuentes más un botón que abre
    el menú completo, para que ninguna sección quede inalcanzable. */
-function buildBottomNav(menu, openDrawer, unread) {
+function buildBottomNav(menu, openDrawer, counts) {
   const nav = document.createElement('nav');
   nav.className = 'bottom-nav';
   nav.setAttribute('aria-label', 'Accesos rápidos');
@@ -126,11 +193,13 @@ function buildBottomNav(menu, openDrawer, unread) {
     .filter(Boolean)
     .map(
       ([label, url, name]) =>
-        `<li><a class="tab${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span></a></li>`,
+        /* "Mensajes" es el único acceso de esta barra que lleva contador
+           propio; la bandeja de avisos vive detrás del botón "Más". */
+        `<li><a class="tab${isCurrent(url) ? ' active' : ''}" href="${url}"${isCurrent(url) ? ' aria-current="page"' : ''}>${icon(name)}<span>${label}</span>${url === MENSAJES ? countMarkup(counts.messages, 'tab-count', 'mensajes sin leer') : ''}</a></li>`,
     )
     .join('');
 
-  nav.innerHTML = `<ul>${tabs}<li><button type="button" class="tab" id="more-tab">${icon('mas')}<span>Más</span>${countMarkup(unread, 'tab-count')}</button></li></ul>`;
+  nav.innerHTML = `<ul>${tabs}<li><button type="button" class="tab" id="more-tab">${icon('mas')}<span>Más</span>${countMarkup(counts.notifications, 'tab-count')}</button></li></ul>`;
   nav.querySelector('#more-tab').onclick = openDrawer;
   return nav;
 }
@@ -153,13 +222,17 @@ export async function initNavigation() {
   if (!sidebar) return user;
 
   const menu = menus[user.role];
-  let unread = 0;
-  try {
-    unread = (await api('/api/notifications/unread-count')).unread;
-  } catch {
-    /* El menú sigue siendo usable aunque el contador no responda. */
-  }
-  fillSidebar(sidebar, user, menu, unread);
+  const counts = { notifications: 0, messages: 0 };
+  /* Los dos contadores se piden a la vez. `allSettled` para que el fallo de
+     uno no deje al otro sin dibujar; el menú sigue siendo usable sin ellos. */
+  const [avisos, mensajes] = await Promise.allSettled([
+    api('/api/notifications/unread-count'),
+    api('/api/messages/unread-count'),
+  ]);
+  if (avisos.status === 'fulfilled') counts.notifications = avisos.value.unread;
+  if (mensajes.status === 'fulfilled') counts.messages = mensajes.value.unread;
+
+  fillSidebar(sidebar, user, menu, counts);
 
   const shell = sidebar.parentElement;
   const scrim = document.createElement('div');
@@ -181,7 +254,30 @@ export async function initNavigation() {
   });
 
   shell.prepend(buildTopbar(openDrawer));
-  shell.append(scrim, buildBottomNav(menu, openDrawer, unread));
+  shell.append(scrim, buildBottomNav(menu, openDrawer, counts));
+
+  /* Avisos en tiempo real. Sin esto los contadores solo cambiaban al cargar
+     una página: quien recibía un mensaje estando en otra pantalla no se
+     enteraba hasta navegar. La conexión se pide después de dibujar el menú
+     para no retrasar su aparición, y si falla todo lo demás sigue igual. */
+  socket()
+    .then((conexion) => {
+      conexion?.on('notification:new', ({ notification }) => {
+        counts.notifications += 1;
+        setUnreadBadges(counts.notifications);
+
+        /* Un mensaje se anuncia además sobre "Mensajes". Si solo subiera el
+           contador de avisos, habría que abrir la bandeja para descubrir que
+           lo que llegó era un mensaje. */
+        if (notification?.type === 'message_received') {
+          counts.messages += 1;
+          setMessageBadges(counts.messages);
+        }
+      });
+    })
+    .catch(() => {
+      /* Sin tiempo real los contadores siguen actualizándose al cambiar de página. */
+    });
 
   /* Si la ventana crece hasta el tamaño de escritorio, el menú
      deslizante deja de tener sentido y debe cerrarse. */

@@ -9,6 +9,14 @@ export const exerciseLibrary = repository.exerciseLibrary;
 export const listRoutines = repository.listRoutines;
 export const workoutHistory = repository.workoutHistory;
 
+export async function setRoutineStatus(id, trainerId, status) {
+  const routine = await repository.setRoutineStatus(id, trainerId, status);
+  /* Si no aparece, o no existe o es de otro entrenador. Se responde igual en
+     ambos casos para no confirmar la existencia de rutinas ajenas. */
+  if (!routine) throw new HttpError(404, 'Rutina no encontrada');
+  return routine;
+}
+
 export async function updateExercise(id, trainerId, input) {
   const exercise = await repository.updateExercise(id, trainerId, input);
   if (!exercise) throw new HttpError(404, 'Ejercicio personalizado no encontrado');

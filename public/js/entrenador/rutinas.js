@@ -14,6 +14,11 @@ const list = document.querySelector('#routines');
 const detail = document.querySelector('#detail');
 const message = document.querySelector('#message');
 
+/* Alterna entre las rutinas vigentes y las guardadas. Se declara aquí arriba
+   porque el dibujado de cada tarjeta lo consulta para decidir si ofrece
+   "Archivar" o "Restaurar". */
+let viendoArchivadas = false;
+
 /* Duración del plan en palabras. Cuatro semanas se leen mejor como un mes. */
 function durationLabel(weeks) {
   const total = weeks || 1;
@@ -45,6 +50,15 @@ function renderRoutineCard(routine) {
         <a class="btn secondary small" href="rutina-formulario.html?duplicar=${routine.id}">
           ${icon('copiar')}Duplicar
         </a>
+        ${
+          viendoArchivadas
+            ? `<button class="btn secondary small" data-status="${routine.id}" data-to="active">
+                 Restaurar
+               </button>`
+            : `<button class="btn secondary small" data-status="${routine.id}" data-to="archived">
+                 ${icon('basura')}Archivar
+               </button>`
+        }
       </div>
     </article>`;
 }
@@ -125,18 +139,57 @@ async function openRoutine(id) {
   }
 }
 
-/* ---------- Carga inicial ---------- */
+/* ---------- Archivar y restaurar ---------- */
 
-try {
-  const { routines } = await api('/api/routines');
-
-  list.innerHTML = routines.length
-    ? routines.map(renderRoutineCard).join('')
-    : '<div class="empty">Aún no has creado rutinas.</div>';
-
-  document.querySelectorAll('[data-view]').forEach((button) => {
-    button.onclick = () => openRoutine(button.dataset.view);
-  });
-} catch (error) {
-  showMessage(message, error.message, 'error');
+/* Se archiva en vez de borrar porque las sesiones de entrenamiento apuntan a
+   los días de la rutina: eliminarla destruiría el historial del atleta. */
+async function cambiarEstado(id, status) {
+  try {
+    await api(`/api/routines/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    detail.innerHTML = ''; // El detalle abierto puede ser el de la rutina movida.
+    await cargar();
+    showMessage(
+      message,
+      status === 'archived' ? 'Rutina archivada.' : 'Rutina restaurada.',
+      'success',
+    );
+  } catch (error) {
+    showMessage(message, error.message, 'error');
+  }
 }
+
+/* ---------- Carga de la lista ---------- */
+
+async function cargar() {
+  try {
+    const { routines } = await api(`/api/routines?archived=${viendoArchivadas}`);
+
+    const vacio = viendoArchivadas ? 'No tienes rutinas archivadas.' : 'Aún no has creado rutinas.';
+    list.innerHTML = routines.length
+      ? routines.map(renderRoutineCard).join('')
+      : `<div class="empty">${vacio}</div>`;
+
+    /* Los manejadores se vuelven a enlazar tras cada dibujado. */
+    list.querySelectorAll('[data-view]').forEach((button) => {
+      button.onclick = () => openRoutine(button.dataset.view);
+    });
+    list.querySelectorAll('[data-status]').forEach((button) => {
+      button.onclick = () => cambiarEstado(button.dataset.status, button.dataset.to);
+    });
+  } catch (error) {
+    showMessage(message, error.message, 'error');
+  }
+}
+
+const toggle = document.querySelector('#toggle-archived');
+toggle.onclick = async () => {
+  viendoArchivadas = !viendoArchivadas;
+  toggle.textContent = viendoArchivadas ? 'Ver rutinas activas' : 'Ver archivadas';
+  detail.innerHTML = '';
+  await cargar();
+};
+
+await cargar();

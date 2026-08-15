@@ -27,7 +27,15 @@ export async function deleteExercise(req, res) {
   res.status(204).end();
 }
 export async function routines(req, res) {
-  res.json({ routines: await service.listRoutines(req.session.user) });
+  res.json({
+    routines: await service.listRoutines(req.session.user, req.query.archived === 'true'),
+  });
+}
+
+export async function setStatus(req, res) {
+  res.json({
+    routine: await service.setRoutineStatus(req.params.id, req.session.user.id, req.body.status),
+  });
 }
 export async function routine(req, res) {
   res.json({ routine: await service.getRoutine(req.params.id, req.session.user) });

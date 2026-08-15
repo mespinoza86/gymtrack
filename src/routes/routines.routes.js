@@ -129,6 +129,14 @@ router.put(
   asyncHandler(controller.updateRoutine),
 );
 router.get('/:id/progress', asyncHandler(controller.progress));
+/* Archivar o restaurar. Es una operación aparte de `PUT /:id` porque aquella
+   crea una versión nueva y archiva la anterior; esta solo cambia el estado. */
+router.put(
+  '/:id/status',
+  requireRole('trainer'),
+  validate(z.object({ status: z.enum(['active', 'archived']) })),
+  asyncHandler(controller.setStatus),
+);
 router.post(
   '/workouts/start',
   requireRole('athlete'),

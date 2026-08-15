@@ -7,6 +7,9 @@ import { asyncHandler } from '../utils/async-handler.js';
 const r = Router();
 r.use(requireAuth);
 r.get('/', asyncHandler(c.conversations));
+/* Antes de `/:id`, o Express tomaría "unread-count" por el identificador
+   de una conversación. */
+r.get('/unread-count', asyncHandler(c.unread));
 r.get('/:id', asyncHandler(c.messages));
 r.post(
   '/:id',

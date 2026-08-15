@@ -1966,3 +1966,85 @@ Se corrigió en `issueCsrf`, que ahora **retira las cabeceras previas de esa coo
 - **La suite pasó de 83 a 88 pruebas**, todas aprobadas, sin usuarios ni sesiones temporales restantes.
 
 Con esto quedan cerradas todas las deudas de seguridad registradas desde la revisión del 12 de agosto.
+
+#### Verificación en producción
+
+El usuario publicó el bloque (commit `1b9994c`) y confirmó que podía entrar con normalidad. Se comprobó ejecutando **los diecisiete controles contra el sitio público**, y todos pasaron.
+
+Conviene anotar por qué esta verificación era imprescindible y no una repetición de la anterior: la corrección de la fijación de sesión vive **solo en el servidor**, así que —a diferencia del CSRF, donde bastó descargar el `api.js` publicado— no hay ningún archivo estático que permita confirmar que el despliegue llegó. La prueba de que el código nuevo está arriba es el propio control «el identificador de sesión cambia al entrar»: con la versión anterior habría fallado.
+
+Queda confirmado en producción, sobre HTTPS y detrás del proxy de Render, que el identificador de sesión se renueva al acceder, que el token de CSRF rota con él y que la sesión anterior queda invalidada.
+
+### Estado de la seguridad al cerrar este bloque
+
+Todas las deudas registradas en la revisión del 12 de agosto están resueltas y verificadas en producción:
+
+| Deuda | Estado |
+|---|---|
+| XSS almacenado | Corregido el 12 de agosto |
+| Autorización en `startWorkout`/`finishWorkout` | Corregida en la fase 1 de rutinas semanales |
+| Recuperación de contraseña | Implementada y probada en producción |
+| Confirmación de correo | Implementada y probada en producción |
+| Aislamiento de datos entre atletas | Cubierto por pruebas |
+| Autorización por rol | Cubierta por pruebas |
+| CSRF | Implementado y verificado en producción |
+| Fijación de sesión | Corregida y verificada en producción |
+
+Las pruebas automatizadas pasaron de **1 a 88** desde el 12 de agosto.
+
+Lo que queda pendiente ya no es seguridad sino producto e higiene: fotografías de progreso —en el backlog por decisión expresa, a la espera de elegir almacenamiento de objetos—, notificaciones en tiempo real, archivar rutinas desde la interfaz, la limpieza periódica de `auth_tokens`, la dependencia `multer` declarada sin usar, las cuentas demo que el `README` documenta y no existen en Neon, y la advertencia de `pg` sobre `sslmode=verify-full`. Sigue vigente también la entregabilidad limitada del remitente `@gmail.com`, que se resuelve con dominio propio y el paso a Resend ya preparado.
+
+### Archivar rutinas y avisos en tiempo real
+
+El usuario preguntó qué significaban exactamente los dos pendientes y, tras explicárselos con el código delante, pidió hacer **los dos**.
+
+#### Por qué hacían falta
+
+**Archivar.** El archivado ya existía pero **solo de forma automática**: al modificar una rutina, la versión anterior se archiva y se crea una nueva. Lo que no existía era archivarla a mano, ni borrarla. Las rutinas se acumulaban para siempre, y como el listado del atleta muestra todas las activas, **una rutina de prueba seguía apareciéndole mezclada con su plan real**.
+
+**Avisos en vivo.** El contador se pedía una sola vez, dentro de `initNavigation()`, así que solo cambiaba al cargar una página. Quien recibía un mensaje estando en otra pantalla no se enteraba hasta navegar. El chat sí era en tiempo real, pero únicamente dentro de la pantalla de mensajes.
+
+#### Archivar rutinas
+
+Se añadió `setRoutineStatus` al repositorio, que cambia el estado comprobando la pertenencia en la misma sentencia, y `PUT /api/routines/:id/status`, exclusiva del entrenador y validada con `z.enum(['active','archived'])`. Se dejó como operación aparte de `PUT /:id` porque aquella crea una versión nueva y archiva la anterior, mientras que esta solo cambia el estado.
+
+`listRoutines` acepta ahora un segundo argumento para consultar las archivadas. **Solo lo usa el entrenador:** el atleta ve siempre y únicamente sus rutinas activas, incluso si pidiera las archivadas, porque una rutina archivada dejó de estar vigente y mostrársela confundiría sobre qué le toca entrenar.
+
+En la pantalla del entrenador, cada tarjeta tiene `Archivar` —o `Restaurar` si se están viendo las archivadas— y la cabecera un botón que alterna entre ambas listas.
+
+**No se ofrece borrar, y es una decisión y no una omisión:** las sesiones de entrenamiento apuntan a los días de la rutina mediante claves foráneas, así que eliminarla destruiría el historial del atleta.
+
+#### Avisos en tiempo real
+
+El obstáculo real era que los controladores alcanzan Socket.IO con `req.app.get('io')`, pero **los servicios no tienen `req`**, y es en los servicios donde se crean las notificaciones. Pasar la instancia por parámetro habría obligado a cambiar la firma de media aplicación por una función accesoria.
+
+Se resolvió con `src/sockets/emitter.js`, que guarda la instancia al arrancar y expone una sola operación. Todo lo de ese módulo es «mejor si llega»: si el socket no está disponible o la persona no tiene ninguna pestaña abierta, no ocurre nada, porque **el aviso ya está guardado en la base** y aparecerá igual al cargar cualquier página. Por eso nada de ahí lanza.
+
+Cada usuario entra a una sala personal `user:<id>` al conectarse. **La sala se deduce de la sesión del servidor y nunca de lo que diga el cliente**, de modo que nadie puede pedir unirse a la de otra persona para escuchar sus avisos; hay una prueba que lo comprueba. El servicio de notificaciones emite ahí al crear una fila, y **solo cuando de verdad se creó**: las variantes idempotentes no devuelven nada cuando deciden no repetir el aviso, y entonces tampoco hay novedad que anunciar.
+
+En el navegador se creó `public/js/comun/socket.js`, una conexión única compartida por el chat y el menú. **El cliente de Socket.IO se carga bajo demanda** en lugar de con una etiqueta `<script>` en cada página, así que no hubo que tocar ningún HTML; si la carga fallara, la aplicación sigue funcionando sin tiempo real. Antes `mensajes.js` abría su propia conexión con `window.io()`; ahora ambos usan la misma, de modo que la pantalla de mensajes ya no abre dos.
+
+Se añadió `setUnreadBadges` a `navigation.js`, que **tiene que poder crear el contador y no solo cambiarlo**: cuando la página se carga sin avisos pendientes, `countMarkup` no genera ningún elemento. La bandeja de notificaciones pasó a usar esa misma función en lugar de su copia local, para que ambos caminos dibujen igual.
+
+#### Verificaciones
+
+- **La suite pasó de 88 a 102 pruebas.** Se añadieron `test/archive-routines.test.js`, que comprueba el recorrido completo —antes de archivar la ven ambos, un entrenador ajeno no puede archivarla, al archivarla desaparece de las dos listas, sigue existiendo entre las archivadas, el atleta no la ve ni pidiéndolas, restaurarla la devuelve y **conserva sus días y ejercicios**— y `test/live-notifications.test.js`, que usa un Socket.IO falso para verificar a qué sala se emite y que una repetición idempotente no emite.
+- Comprobación temporal por HTTP con seis controles: **el cliente de Socket.IO se sirve exactamente en `/socket.io/socket.io.js`**, que es la dirección que usa la carga dinámica; **`PUT /:id/status` llega a su manejador y no lo captura `PUT /:id`** —se distingue porque responde 404 y no el 400 de validación del cuerpo completo—; un estado inventado se rechaza; y el listado acepta `?archived=true`.
+
+**Un error propio corregido.** La prueba de archivado esperaba que la rutina conservara siete franjas, y solo tenía una. La suposición era equivocada: **las franjas vacías hasta siete las rellena el constructor del navegador, no la API**, que guarda exactamente lo que se le envía. Se corrigió la expectativa y quedó anotado en el propio archivo.
+
+**Pendiente de este bloque.** La entrega real por socket necesita confirmación visual, porque `socket.io-client` no está entre las dependencias y no se puede comprobar desde Node sin instalarlo. La prueba concreta es tener dos sesiones abiertas —entrenador y atleta—, dejar una en una pantalla que no sea la de mensajes y provocar un evento desde la otra: el contador debe subir solo, sin recargar.
+
+#### Contador propio para los mensajes
+
+El usuario confirmó que los avisos en vivo funcionaban y señaló un hueco acertado: al llegar un mensaje **solo subía el contador de Notificaciones**, cuando lo que había llegado era un mensaje. Había que abrir la bandeja para descubrirlo.
+
+El hueco era mayor de lo que parecía: **`Mensajes` está también en la barra inferior del celular** en los dos roles, así que le faltaba contador tanto ahí como en el menú lateral. Y el dato ya existía: `messages.read_at` se marca al abrir una conversación, así que se podía contar lo pendiente sin añadir nada al esquema.
+
+**Backend.** `unreadCount` en el repositorio de mensajes cuenta lo no leído de todas las conversaciones de una persona, excluyendo lo que escribió ella misma —nadie tiene pendiente lo propio—. Se expuso como `GET /api/messages/unread-count`, **declarada antes de `/:id`**, o Express habría tomado «unread-count» por el identificador de una conversación; es la misma precaución que ya se tomó con `read-all` en las notificaciones.
+
+**Navegador.** El pintado de contadores se generalizó en `pintarContador`, con dos envoltorios: `setUnreadBadges` para los avisos y `setMessageBadges` para los mensajes. Los selectores se anclaron a `[data-sidebar]` y `.bottom-nav` porque **la barra inferior también es un elemento `nav`** y un selector genérico habría podido pintar el contador en el sitio equivocado.
+
+Los dos contadores se piden a la vez con `Promise.allSettled`, para que el fallo de uno no deje al otro sin dibujar. En vivo, un aviso de tipo `message_received` sube ambos. Y al abrir una conversación —que es lo que marca los mensajes como leídos— la pantalla vuelve a pedir el contador al servidor en lugar de restar a ojo, porque solo el servidor sabe cuántos quedaban pendientes en las demás conversaciones.
+
+**Verificaciones.** La suite pasó de 102 a **106 pruebas**. Las nuevas comprueban que lo que uno escribe no le queda pendiente a él, que abrir la conversación lo pone a cero, y que **quien no participa en una conversación no ve nada de ella en su contador**. Una comprobación por HTTP confirmó que `unread-count` llega a su manejador y devuelve un número, en lugar de que `/:id` lo trate como una conversación inexistente.

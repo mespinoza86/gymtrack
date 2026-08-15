@@ -2,6 +2,9 @@ import * as s from '../services/messages.service.js';
 export async function conversations(req, res) {
   res.json({ conversations: await s.conversations(req.session.user) });
 }
+export async function unread(req, res) {
+  res.json({ unread: await s.unreadCount(req.session.user.id) });
+}
 export async function messages(req, res) {
   res.json({ messages: await s.messages(req.params.id, req.session.user.id) });
 }

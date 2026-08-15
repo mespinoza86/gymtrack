@@ -1,9 +1,13 @@
-import { initNavigation } from '../comun/navigation.js';
+import { initNavigation, setMessageBadges } from '../comun/navigation.js';
 import { api, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
+import { socket as conectar } from '../comun/socket.js';
 
 const user = await initNavigation();
-const socket = window.io();
+/* Misma conexión que usa el menú para los avisos. Puede ser nula si el
+   cliente no llegó a cargar; entonces el chat funciona pero sin refresco
+   automático, y hay que volver a entrar a la conversación para ver lo nuevo. */
+const socket = await conectar();
 
 const list = document.querySelector('#conversations');
 const chat = document.querySelector('#chat');
@@ -39,14 +43,28 @@ function markActive(id) {
 async function openConversation(id) {
   active = id;
   markActive(id);
-  socket.emit('conversation:join', id);
+  socket?.emit('conversation:join', id);
   await refresh();
 }
 
 async function refresh() {
   if (!active) return;
+  /* Pedir la conversación marca como leídos los mensajes de la otra persona,
+     así que el contador del menú debe bajar en consecuencia. */
   const { messages } = await api(`/api/messages/${active}`);
   render(messages);
+  await actualizarContador();
+}
+
+/* Se vuelve a pedir al servidor en lugar de restar a ojo: solo él sabe
+   cuántos quedaban sin leer en el resto de conversaciones. */
+async function actualizarContador() {
+  try {
+    const { unread } = await api('/api/messages/unread-count');
+    setMessageBadges(unread);
+  } catch {
+    /* Si falla, el contador se corregirá al cargar la siguiente página. */
+  }
 }
 
 function render(messages) {
@@ -78,7 +96,7 @@ document.querySelector('#send').onsubmit = async (event) => {
   }
 };
 
-socket.on('message:new', refresh);
+socket?.on('message:new', refresh);
 
 await loadConversations();
 

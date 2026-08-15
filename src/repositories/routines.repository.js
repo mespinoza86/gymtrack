@@ -188,10 +188,13 @@ export async function replaceRoutine(id, trainerId, input) {
   });
 }
 
-export async function listRoutines(user) {
+/* `archived` solo lo usa el entrenador, para consultar lo que guardó. El
+   atleta ve siempre y únicamente sus rutinas activas: una archivada dejó de
+   estar vigente y mostrársela solo confundiría sobre qué le toca entrenar. */
+export async function listRoutines(user, archived = false) {
   const condition =
     user.role === 'trainer'
-      ? "r.trainer_id = $1 AND r.status <> 'archived'"
+      ? `r.trainer_id = $1 AND r.status ${archived ? '=' : '<>'} 'archived'`
       : "r.athlete_id = $1 AND r.status = 'active'";
   return (
     await pool.query(
@@ -200,6 +203,21 @@ export async function listRoutines(user) {
       [user.id],
     )
   ).rows;
+}
+
+/* Archiva o restaura una rutina. No se ofrece borrarla: las sesiones de
+   entrenamiento apuntan a sus días mediante claves foráneas, así que eliminarla
+   destruiría el historial del atleta. Archivar la retira de las listas y
+   conserva todo lo registrado. */
+export async function setRoutineStatus(id, trainerId, status) {
+  return (
+    await pool.query(
+      `UPDATE routines SET status = $3
+        WHERE id = $1 AND trainer_id = $2
+        RETURNING id, name, status`,
+      [id, trainerId, status],
+    )
+  ).rows[0];
 }
 
 export async function getRoutine(id, user) {

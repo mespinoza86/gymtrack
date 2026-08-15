@@ -1,4 +1,4 @@
-import { initNavigation } from '../comun/navigation.js';
+import { initNavigation, setUnreadBadges } from '../comun/navigation.js';
 import { api, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
 import { icon } from '../comun/icons.js';
@@ -26,13 +26,9 @@ function relativeDate(value) {
 function render() {
   const unread = notifications.filter((item) => !item.read_at).length;
   readAll.disabled = !unread;
-  document.querySelectorAll('.nav-count,.tab-count').forEach((badge) => {
-    if (!unread) badge.remove();
-    else {
-      badge.textContent = unread > 99 ? '99+' : String(unread);
-      badge.setAttribute('aria-label', `${unread} notificaciones pendientes`);
-    }
-  });
+  /* Misma función que usa la actualización en vivo, para que ambos caminos
+     dibujen el contador igual. */
+  setUnreadBadges(unread);
   list.innerHTML = notifications.length
     ? notifications
         .map((item) => {
