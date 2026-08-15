@@ -2048,3 +2048,89 @@ El hueco era mayor de lo que parecía: **`Mensajes` está también en la barra i
 Los dos contadores se piden a la vez con `Promise.allSettled`, para que el fallo de uno no deje al otro sin dibujar. En vivo, un aviso de tipo `message_received` sube ambos. Y al abrir una conversación —que es lo que marca los mensajes como leídos— la pantalla vuelve a pedir el contador al servidor en lugar de restar a ojo, porque solo el servidor sabe cuántos quedaban pendientes en las demás conversaciones.
 
 **Verificaciones.** La suite pasó de 102 a **106 pruebas**. Las nuevas comprueban que lo que uno escribe no le queda pendiente a él, que abrir la conversación lo pone a cero, y que **quien no participa en una conversación no ve nada de ella en su contador**. Una comprobación por HTTP confirmó que `unread-count` llega a su manejador y devuelve un número, en lugar de que `/:id` lo trate como una conversación inexistente.
+
+El usuario probó ambas funciones en el navegador y **confirmó que los contadores se comportan como se esperaba**. Queda por publicar en Render.
+
+## Estado al cerrar el 14 de agosto de 2026
+
+### Corrección de un pendiente que ya no existía
+
+Al repasar la lista de tareas se estaba arrastrando por inercia que el `README.md` documentaba unas cuentas demo inexistentes en Neon. **Se comprobó y ya estaba corregido**: el documento dice explícitamente que no hay cuentas de demostración preparadas y explica el guardarraíl que impide sembrarlas contra una base remota. Queda anotado como recordatorio de comprobar los pendientes antes de repetirlos.
+
+Sí queda un resto menor y contradictorio: la lista «Seguridad antes de producción» del `README` sigue pidiendo «retirar las cuentas demo», que ya no hay.
+
+### Lo que se completó
+
+De las cuatro fases acordadas el 14 de agosto están terminadas las tres primeras —ficha individual del atleta, duplicar rutinas y notificaciones—, más dos funciones añadidas después: **archivar rutinas** y **avisos en tiempo real con contador propio para los mensajes**.
+
+Todas las deudas de seguridad de la revisión del 12 de agosto están cerradas y verificadas en producción. Las pruebas automatizadas pasaron de **1 a 106**, repartidas en 15 archivos.
+
+### Pendientes reales, comprobados uno por uno
+
+1. **Publicar en Render** el trabajo de archivado, avisos en vivo y contador de mensajes. Es lo único terminado que no está en producción.
+2. **Fotografías de progreso**, la cuarta fase. Sigue en el backlog porque empieza por una decisión de infraestructura: el disco de Render se borra en cada despliegue, así que exige almacenamiento de objetos externo, y son datos corporales que piden un control de acceso más cuidadoso. La tabla existe desde la migración inicial y `MAX_UPLOAD_MB` ya está en la configuración.
+3. **`multer` declarado sin usar.** Comprobado: aparece en `package.json` y en ningún archivo de `src`. Está esperando precisamente a las fotografías.
+4. **`auth_tokens` crece indefinidamente.** Los tokens usados o vencidos nunca se eliminan; conviene una limpieza periódica antes de tener muchos usuarios.
+5. **Advertencia de `pg`** sobre hacer explícito `sslmode=verify-full` antes de la próxima versión mayor.
+6. **Entregabilidad del correo.** El remitente es una dirección `@gmail.com`, la configuración más propensa a acabar en spam. Se resuelve registrando un dominio y pasando a Resend, cuyo transporte ya está escrito y cuyo procedimiento está documentado más arriba.
+7. **El `README` pide retirar unas cuentas demo que ya no existen.**
+
+### Riesgo estructural asumido conscientemente
+
+`.env` y `npm test` siguen apuntando a **la misma base que sirve el sitio publicado**. Funciona porque cada prueba acota sus borrados y comprueba el recuento de filas eliminadas, pero el resultado depende de esa disciplina y no de una separación real de entornos. Cualquier prueba nueva debe mantenerla.
+
+### Publicación final del día y verificación en producción
+
+El usuario confirmó el trabajo en el commit `d6345f8` («Notificacion y mensajes indicador») y lo publicó en Render. Se verificó desde fuera, sin dar por bueno el despliegue:
+
+- `/js/comun/socket.js` responde 200 y contiene la carga dinámica del cliente.
+- `/js/comun/navigation.js` publicado contiene `setMessageBadges`, es decir, el contador de mensajes está arriba.
+- Los seis controles de archivado pasaron contra el sitio público: el cliente de Socket.IO se sirve en su dirección, **`PUT /:id/status` llega a su manejador y no lo captura `PUT /:id`**, un estado inventado se rechaza y el listado acepta `?archived=true`.
+- Los controles de mensajería pasaron: **`unread-count` llega a su manejador** y devuelve un número, en lugar de que `/:id` lo trate como una conversación.
+- Los usuarios temporales de ambas comprobaciones se eliminaron.
+
+## Resumen del 14 de agosto de 2026
+
+Fue la jornada más larga del proyecto. Todo lo de abajo está explicado en detalle en las secciones anteriores; esto es el índice para reencontrarlo.
+
+### Lo que se construyó, en orden
+
+1. **Rutinas semanales completas**, en cuatro fases: modelo semanal en base de datos y API con cumplimiento por ejercicio; constructor semanal del entrenador con días libres y días espejo; pantalla del atleta con anillos de progreso y marcado ejercicio por ejercicio; y vista de cumplimiento para el entrenador. Incluyó un repaso completo de la vista móvil.
+2. **Reproducción de videos de YouTube** dentro de la aplicación, cuyo fallo resultó ser la cabecera `Referrer-Policy` de Helmet y no la política de contenido.
+3. **Ficha individual del atleta**, y con ella el formulario para que el entrenador registre mediciones.
+4. **Sincronización de mediciones**: una sola fila por atleta y fecha, donde el segundo guardado completa los huecos sin borrar lo anterior.
+5. **Duplicar rutinas**, con copia fiel y linaje independiente.
+6. **Notificaciones dentro de la aplicación**: módulo completo, ocho eventos conectados y bandeja propia.
+7. **Endurecimiento de las notificaciones**: que un aviso fallido no tumbe la operación que lo provocó, y agrupado de los mensajes mientras siguen sin leer.
+8. **Recuperación de contraseña y confirmación de correo**, con proveedor aislado, Brevo en producción y el transporte de Resend ya escrito para el día que exista dominio.
+9. **Pruebas de aislamiento de datos y de autorización por rol.**
+10. **Protección contra CSRF.**
+11. **Cierre de la fijación de sesión.**
+12. **Archivar rutinas**, y **avisos en tiempo real** con contador propio para los mensajes.
+
+### Cifras
+
+- Las pruebas automatizadas pasaron de **1 a 106**, en 15 archivos.
+- Se aplicó la migración `005_email_verification.sql`, la quinta del proyecto.
+- Todas las deudas de seguridad de la revisión del 12 de agosto quedaron cerradas **y verificadas en el sitio publicado**, no solo en local.
+
+### Errores propios cometidos y corregidos, para no repetirlos
+
+- Se afirmó de memoria cómo se había resuelto el conflicto de mediciones **sin comprobarlo contra el código**, y era falso. De ahí la regla de verificar antes de resumir.
+- Se usaron comillas de dólar de PostgreSQL (`$$…$$`) en dos consultas con parámetros `$1`, que habrían chocado.
+- Se llamó a `messages.conversations` con un identificador cuando recibe el objeto del usuario.
+- Se «limpió» una expresión regular de prueba quitándole una barra invertida que sí hacía falta, rompiendo una prueba que pasaba.
+- Se dio por hecho que la API rellenaba las siete franjas de la semana, cuando eso lo hace el constructor del navegador.
+- Se arrastró como pendiente una corrección del `README` que ya estaba hecha.
+
+### Punto exacto de continuación para mañana
+
+**No queda nada a medias.** El árbol de trabajo está limpio salvo esta bitácora, todo lo terminado está publicado en Render y verificado allí, y las 106 pruebas pasan.
+
+Lo siguiente, por orden de valor:
+
+1. **Fotografías de progreso**, la única fase pendiente del bloque acordado. Empieza por una decisión que no es de programación: elegir proveedor de almacenamiento de objetos, porque el disco de Render se borra en cada despliegue. La tabla existe desde la migración inicial, `multer` está declarado esperando esto y `MAX_UPLOAD_MB` ya está en la configuración. Son datos corporales, así que el control de acceso pide más cuidado que el resto de la aplicación.
+2. **Registrar un dominio y pasar a Resend**, si importa que los correos dejen de caer en spam. El transporte está escrito y el procedimiento documentado; son tres variables en Render y una tarde de DNS.
+3. **Cabos menores**: limpieza periódica de `auth_tokens`, `sslmode=verify-full` antes de subir a `pg` 9, y quitar del `README` la línea que pide retirar unas cuentas demo que ya no existen.
+
+**Sugerencia de mantenimiento pendiente de decisión.** Este documento supera las 2.100 líneas y crece de forma lineal, así que recuperar el contexto obliga a leerlo casi entero. Se propuso añadir arriba una sección «Estado actual» reescrita en cada sesión, dejando debajo el historial cronológico intacto; el resumen de esta sección puede servir de primera versión.
