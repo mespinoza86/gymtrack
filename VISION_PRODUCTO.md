@@ -1821,3 +1821,118 @@ El usuario preguntó qué costaría pasarse a Resend el día que tenga dominio y
 - El fallo habitual justo después de migrar es que Resend responda que el dominio todavía no está verificado; por eso su transporte incluye el cuerpo del error del proveedor en el mensaje.
 
 **Un falso positivo encontrado al escribir las pruebas.** La comprobación de aislamiento afirmaba que el servicio de autenticación no debía mencionar `brevo|resend`, y falló: el servicio tiene una función `resendVerification`, que significa reenviar la confirmación y no tiene relación con el proveedor Resend. Se afinó la comprobación para mirar los servidores (`api.brevo.com`, `api.resend.com`) en lugar de los nombres sueltos. Queda anotado porque volvería a aparecer si alguien endurece esa prueba sin conocer el motivo.
+
+**Salvavidas añadido a las pruebas.** Si alguien deja `MAIL_TRANSPORT=brevo` en su `.env` para probar el envío real, `test/email-auth.test.js` intentaría mandar correos de verdad a direcciones inventadas y fallaría sin explicar el motivo. La prueba comprueba ahora el transporte antes de empezar y se detiene con un mensaje que dice exactamente qué cambiar.
+
+#### Brevo configurado y primera prueba con envío real
+
+El usuario siguió el procedimiento de Brevo —cuenta, verificación de la dirección de remitente y clave de API— y **confirmó que el envío funciona**, probándolo con una de las cuentas que ya tenía.
+
+Estado comprobado al cerrar este bloque, sin exponer secretos:
+
+- `MAIL_API_KEY` y `MAIL_FROM` quedaron definidas en el `.env` local.
+- El dominio del remitente es **`gmail.com`**, que es la configuración de peor entregabilidad posible: los servidores que reciben ven un correo que dice venir de Gmail pero enviado por Brevo, y ese es el patrón de una suplantación. Funciona, pero es esperable que algunos correos caigan en spam. Se corrige de raíz el día que exista dominio propio y se pase a Resend.
+- `MAIL_TRANSPORT` volvió a `console` después de la prueba, así que las pruebas automatizadas siguen siendo ejecutables.
+- El trabajo quedó confirmado en Git con el commit `d9c0ffd` (`adding recuperacion de contraseña`) y el árbol quedó limpio.
+
+**Lo que esa prueba NO cubre, y conviene no dar por hecho.** Las cuentas que ya existían fueron marcadas como verificadas por la migración `005`, de modo que probar con una de ellas ejercita la **recuperación de contraseña**, pero no el camino de **registro nuevo con confirmación bloqueante**, que es justamente el arriesgado: es el único que puede dejar a una persona sin poder entrar si el correo no llega. Queda pendiente registrar una cuenta nueva con una dirección real, comprobar que el acceso queda bloqueado antes de confirmar, confirmar desde el enlace y entrar.
+
+Queda pendiente también confirmar si las variables de correo se configuraron en **Render**, además del `.env` local, y publicar allí este bloque.
+
+#### Diagnóstico: el correo del registro nuevo no llegaba
+
+El usuario informó de que al registrar una cuenta nueva no le llegaba el correo. Se diagnosticó consultando la base en lugar de suponer, y los datos dieron la respuesta completa:
+
+- La cuenta `marcoespinoza55@gmail.com` se creó correctamente y quedó **sin verificar**, es decir, el bloqueo actuaba como se diseñó.
+- Se emitieron **dos tokens de confirmación**: el primero quedó anulado automáticamente al pedir el reenvío del segundo, que es exactamente la regla implementada. El mecanismo de reenvío funcionaba.
+- **`MAIL_TRANSPORT` valía `console`**, el valor al que el usuario lo había devuelto tras la prueba anterior para poder ejecutar las pruebas automatizadas.
+
+La causa era, por tanto, que el correo no salía hacia Brevo sino a la terminal. No hubo ningún defecto en el código. Tras cambiar el transporte a `brevo` y reiniciar el servidor, el correo llegó.
+
+Se anota como lección de operación: **`.env` se lee al arrancar y `node --watch` no lo vigila**, así que cambiar el transporte exige detener y volver a levantar el servidor; guardar el archivo no basta.
+
+#### `APP_ORIGIN`: dos valores distintos y una barra final peligrosa
+
+El usuario observó después que el enlace del correo apuntaba a `http://localhost:3000` en lugar de la dirección pública. **No era un defecto:** la prueba corría en local y `APP_ORIGIN` vale ahí `http://localhost:3000`, que es el valor correcto para desarrollo, porque el enlace debe abrir el servidor local. La variable que importa para los correos reales es la de **Render**, que debe contener la URL pública `https://gymtrack-24fc.onrender.com`.
+
+Al escribir la URL, el usuario la puso terminada en barra. Como los enlaces se construyen concatenando `${appOrigin}/pagina.html`, ese valor habría generado direcciones con doble barra. Se añadió en `src/config/environment.js` una normalización que **elimina las barras finales**, y se comprobó en ejecución que ambas formas producen ahora la misma dirección correcta. Es un error fácil de cometer al copiar la URL desde el navegador o desde el propio panel de Render, así que conviene que el código lo tolere en lugar de confiar en que nadie se equivoque.
+
+#### Bloque de correo terminado y verificado en producción
+
+El usuario configuró las variables en Render, publicó el bloque y **probó el recorrido completo desde el sitio publicado con una dirección de correo real**. Funcionó.
+
+La comprobación no se dio por buena de palabra: como Render y el entorno local comparten la misma base de Neon, el estado se verificó consultando los datos. La cuenta `marcoespinoza55@gmail.com` figura ahora con `verificado=true`, y el último token de confirmación, emitido a las 01:56 desde el servicio publicado, aparece como usado. Es decir, el correo salió de Render, llegó, se abrió el enlace y la cuenta quedó confirmada.
+
+De paso quedaron confirmados por los datos otros dos comportamientos diseñados: los tokens anteriores del mismo propósito figuran todos como usados, porque emitir uno nuevo anula los previos; y el token de recuperación de contraseña de las 00:17 aparece **vencido**, cumpliendo su hora de vigencia.
+
+**Con esto el bloque de correo queda terminado.** Ambos flujos —recuperación de contraseña y confirmación de cuenta con acceso bloqueado— funcionan en local y en producción. Es la primera vez que el proyecto tiene una vía de recuperación para alguien que olvida su contraseña, que era la carencia más grave para usarlo con personas reales.
+
+**Advertencia que sigue vigente.** El remitente es una dirección `@gmail.com`, la configuración de peor entregabilidad posible. Que haya llegado en esta prueba no garantiza que llegue siempre ni a todos los destinatarios; correos a otros proveedores pueden acabar en spam. La solución definitiva sigue siendo registrar un dominio y pasar a Resend, cuyo transporte ya está escrito y cuyo procedimiento está documentado más arriba.
+
+**Nota de método.** Al diagnosticar, conviene recordar que el `.env` local **no describe lo que ocurre en Render**: son dos configuraciones independientes. Durante esta sesión eso causó confusión dos veces —una con `MAIL_TRANSPORT` y otra con `APP_ORIGIN`—, y en ambos casos la respuesta estuvo en consultar la base de datos y no en leer el archivo local.
+
+### Pruebas de aislamiento de datos y de autorización por rol
+
+Terminado el correo, se acordó atacar el hueco de cobertura más grave. El razonamiento fue que GymTrack guarda datos de salud —mediciones corporales, check-ins, conversaciones privadas— y que, de las 59 pruebas que había, **ninguna comprobaba que un atleta no pudiera leer los datos de otro**. Un fallo de permisos ahí es el que más daño causaría y era el que menos red de seguridad tenía.
+
+#### `test/data-isolation.test.js`
+
+Monta **dos parejas independientes** —entrenador A con atleta A, entrenador B con atleta B— y comprueba que ninguna alcanza los datos de la otra. Las vinculaciones se crean con el **flujo real de invitaciones**, no insertando filas a mano, de modo que la prueba cubre de paso ese recorrido y obtiene las conversaciones que `acceptInvitation` crea.
+
+Lo que quedó cubierto:
+
+- **Invitaciones:** un código no sirve dos veces y uno vencido se rechaza.
+- **Mediciones:** el entrenador ajeno no puede leerlas ni escribirlas, un atleta no puede asomarse a las de otro, y la medición de uno no aparece en la lista del otro.
+- **Check-ins:** no se puede enviar a un entrenador sin vínculo, y el entrenador ajeno recibe «no encontrado» al intentar responder uno que no le corresponde.
+- **Nutrición:** crear un plan exige vínculo activo.
+- **Mensajería:** quien no participa en una conversación no puede leerla ni escribir en ella **aunque conozca su identificador**, y la conversación tampoco aparece en su listado.
+- **Fin de la vinculación:** al terminar la relación el entrenador pierde el acceso de inmediato, **pero el atleta conserva su historial**. Esa era una regla acordada desde el principio del proyecto y hasta ahora no estaba comprobada por nada.
+
+**Detalle de limpieza que costó atención.** Salvo notificaciones y tokens, las tablas referencian `users(id)` **sin `ON DELETE CASCADE`**, así que borrar los usuarios directamente habría fallado. El desmontaje elimina en orden de dependencias: mensajes, conversaciones, mediciones, check-ins, planes —cuyas comidas sí cascadean—, invitaciones, vínculos y por último los cuatro usuarios, verificando el recuento.
+
+#### `test/roles.test.js`
+
+Sin base de datos. Prueba el middleware directamente con sesiones simuladas y comprueba que **`requireRole` distingue no haber entrado (401) de no tener permiso (403)**, que son situaciones distintas y el navegador debe reaccionar distinto a cada una.
+
+La segunda mitad es una comprobación de contrato que **divide cada archivo de rutas en declaraciones** y verifica que once endpoints concretos declaren su rol: los de planificación reservados al entrenador y los de ejecución y registro reservados al atleta. También comprueba que los cinco routers privados apliquen `requireAuth` a todo el router; `auth` queda fuera porque entrar, registrarse y recuperar la contraseña son públicos por definición. Es la prueba que protege del olvido más probable: añadir un endpoint nuevo y no ponerle la comprobación de rol.
+
+#### Verificaciones
+
+- **La suite pasó de 59 a 71 pruebas, todas aprobadas.**
+- Ningún hallazgo de seguridad: las comprobaciones de permisos del código ya eran correctas. El valor de este bloque no es haber arreglado algo, sino que a partir de ahora una regresión en los permisos **rompe la construcción** en lugar de pasar inadvertida.
+- Dos errores propios corregidos al escribir: se usó `$$1 hour$$` en un SQL, que es una comilla de dólar de PostgreSQL y habría chocado con el parámetro `$1`; y se llamó a `messages.conversations` con un identificador cuando esa función recibe el **objeto** del usuario.
+- Al terminar, `usuarios_temporales_restantes = 0`. La consulta informa además de cinco tokens, que **no son restos de las pruebas** sino los tokens reales ya usados de las cuentas del usuario.
+
+**Anotación menor para el futuro:** la tabla `auth_tokens` crece indefinidamente, porque los tokens usados o vencidos nunca se eliminan. Con el uso actual es irrelevante, pero conviene una limpieza periódica antes de tener muchos usuarios.
+
+### Protección contra CSRF
+
+Era la última deuda de seguridad registrada desde el 12 de agosto: la única defensa contra peticiones falsificadas desde otro sitio era `sameSite=lax` en la cookie de sesión, que cubre bastante pero depende por completo del navegador y no protege frente a un atacante en el mismo sitio.
+
+#### Decisión de diseño: proteger solo lo autenticado
+
+Al revisar `src/app.js` apareció el dato que condicionó todo: la sesión usa **`saveUninitialized: false`**, de modo que un visitante anónimo no tiene sesión ni fila en la base. Exigir token también a los endpoints sin sesión —entrar, registrarse, recuperar la contraseña— habría obligado a **crear una sesión en PostgreSQL por cada visitante, incluidos los robots**, solo para poder entregarle un token.
+
+Se optó por exigirlo **únicamente cuando ya existe una sesión con usuario**, que es donde está el riesgo real: el CSRF consiste en abusar del estado autenticado de la víctima, y sin sesión no hay nada que abusar. Los endpoints públicos siguen protegidos por `sameSite=lax`, sus límites de peticiones y, en el caso del restablecimiento, por un token que solo llega al buzón.
+
+#### Mecanismo
+
+Token sincronizado en `src/middleware/csrf.js`. Se guarda un valor aleatorio de 32 bytes en la sesión y se entrega en la cookie `gymtrack.csrf`; el navegador lo devuelve en la cabecera `X-CSRF-Token` y el servidor compara ambos con `crypto.timingSafeEqual`. Un sitio ajeno puede lograr que el navegador envíe la cookie de sesión, pero **no puede leer la cookie del token** ni componer la cabecera.
+
+La cookie **no es `httpOnly` a propósito**, porque el JavaScript de la propia página tiene que leerla. Eso no la debilita: un origen ajeno no puede leer cookies de este. Hay una prueba que lo comprueba, porque marcarla `httpOnly` «por seguridad» rompería la aplicación entera de forma silenciosa.
+
+`attachCsrf` crea el token si falta, de modo que **las sesiones abiertas antes de existir esta protección se ponen al día solas**, sin obligar a nadie a volver a entrar. El controlador de acceso lo entrega además en la respuesta del propio `login`, para que la primera acción después de entrar no se quede sin cabecera.
+
+En el navegador la cabecera se añade en `public/js/comun/api.js` y solo en los métodos que cambian algo. Se comprobó que **`api.js` es el único archivo de `public/js` que llama a `fetch`**, así que ningún módulo se salta el token; hay una prueba que recorre todos los archivos para que siga siendo cierto.
+
+#### Verificaciones
+
+- `test/csrf.test.js`, **13 pruebas puras** con peticiones y respuestas simuladas: los métodos de lectura pasan, sin sesión no se exige nada, con sesión se rechaza la falta de cabecera y cualquier valor equivocado —incluidos los de longitud parecida—, el token se conserva durante la sesión y difiere entre sesiones, un visitante anónimo no recibe cookie, y el orden de montaje en `app.js` es el correcto.
+- **Comprobación temporal de extremo a extremo contra el servidor real**, con 12 controles, todos correctos: el acceso entrega ambas cookies, la del token no es `httpOnly` y mide 64 caracteres, una lectura no necesita token, **una escritura sin cabecera se rechaza con 403 y código `csrf_invalid`**, una con token equivocado también, una con el token correcto se acepta, y **se puede entrar sin token previo** —que era el riesgo de dejar a todo el mundo fuera—. El usuario temporal se eliminó.
+- **La suite pasó de 71 a 83 pruebas**, todas aprobadas, y `usuarios_temporales_restantes = 0`.
+
+**Un error propio digno de anotar.** Una comprobación buscaba el nombre de la cookie con `/gymtrack\\?\.csrf/` y se «limpió» a `/gymtrack\.csrf/`, lo que la hizo fallar: en el código el nombre vive dentro de una expresión regular, donde el punto va escapado como `gymtrack\.csrf`. La barra invertida opcional no sobraba. Queda documentado en el propio archivo para que no se vuelva a simplificar.
+
+#### Hallazgo no corregido: fijación de sesión
+
+Al revisar el flujo de acceso se observó que `login` asigna `req.session.user` **sin regenerar el identificador de sesión**. Eso deja abierta la fijación de sesión: quien consiga que una víctima use un identificador conocido de antemano conservaría el acceso después de que esa persona entre. La corrección es llamar a `req.session.regenerate()` antes de guardar el usuario y volver a emitir el token de CSRF a continuación. **No se aplicó** para no mezclarlo con este bloque y porque toca el camino más crítico de la aplicación; queda anotado como el siguiente punto de seguridad.

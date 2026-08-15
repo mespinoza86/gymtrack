@@ -1,7 +1,24 @@
+/* El servidor entrega el token contra falsificación en una cookie legible.
+   Se lee en cada llamada y no una sola vez al cargar, porque al iniciar
+   sesión cambia y una copia guardada quedaría obsoleta. */
+function csrfToken() {
+  const found = document.cookie.match(/(?:^|;\s*)gymtrack\.csrf=([^;]*)/);
+  return found ? decodeURIComponent(found[1]) : '';
+}
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 export async function api(path, options = {}) {
+  const method = (options.method ?? 'GET').toUpperCase();
+
   const response = await fetch(path, {
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      /* Solo lo necesitan las peticiones que cambian algo. */
+      ...(SAFE_METHODS.has(method) ? {} : { 'X-CSRF-Token': csrfToken() }),
+      ...(options.headers || {}),
+    },
     ...options,
   });
   if (response.status === 204) return null;

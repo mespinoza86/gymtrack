@@ -13,6 +13,7 @@ import routineRoutes from './routes/routines.routes.js';
 import trackingRoutes from './routes/tracking.routes.js';
 import messageRoutes from './routes/messages.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
+import { attachCsrf, verifyCsrf } from './middleware/csrf.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -56,6 +57,10 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(sessionMiddleware);
+/* Van juntos y justo después de la sesión: el primero entrega el token y el
+   segundo lo exige. Antes de las rutas, para que ninguna quede sin cubrir. */
+app.use(attachCsrf);
+app.use(verifyCsrf);
 app.use(
   '/api/auth',
   rateLimit({

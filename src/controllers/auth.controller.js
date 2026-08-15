@@ -1,4 +1,5 @@
 import * as auth from '../services/auth.service.js';
+import { issueCsrf } from '../middleware/csrf.js';
 
 export async function register(req, res) {
   /* No se abre sesión: la cuenta queda pendiente de confirmar el correo. */
@@ -34,6 +35,10 @@ export async function resendVerification(req, res) {
 export async function login(req, res) {
   const user = await auth.login(req.body.email, req.body.password);
   req.session.user = user;
+  /* El token se entrega en la respuesta del propio acceso. Si se esperara al
+     siguiente `attachCsrf`, la primera acción después de entrar se quedaría
+     sin cabecera. */
+  issueCsrf(req, res);
   res.json({ user });
 }
 

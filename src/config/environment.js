@@ -28,7 +28,11 @@ export const env = Object.freeze({
   databaseUrl: process.env.DATABASE_URL,
   databaseSsl: process.env.DATABASE_SSL === 'true',
   sessionSecret: process.env.SESSION_SECRET,
-  appOrigin: process.env.APP_ORIGIN ?? 'http://localhost:3000',
+  /* Se quita la barra final si la trae. Los enlaces de los correos se arman
+     como `${appOrigin}/pagina.html`, así que un valor terminado en barra
+     produciría direcciones con doble barra. Es un error fácil de cometer al
+     copiar la URL desde el navegador o desde el panel de Render. */
+  appOrigin: (process.env.APP_ORIGIN ?? 'http://localhost:3000').replace(/\/+$/, ''),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB ?? 5),
   mailTransport,
   mailApiKey: process.env.MAIL_API_KEY ?? '',
